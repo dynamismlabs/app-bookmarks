@@ -185,6 +185,24 @@ describe("calling the app", () => {
 });
 
 describe("connecting to the real app", () => {
+  // Kit gap (docs/parity.md): Chrome sends Origin: chrome-extension://<id> on the extension's sign-in requests,
+  // and the kit refuses any other origin except on /mcp with a token. When the kit lets OAuth's client endpoints
+  // through, this test fails: delete it, and the extension's Connect works as the tests below show.
+  it("is refused today when it signs in from inside the browser, and says so", async () => {
+    const h = await harness();
+    // As measured in Chromium: the extension's GETs arrive without an Origin, its POSTs with one.
+    const browser = (url: string, init: RequestInit = {}) => h.request(url, init.method === "POST" ? { ...init, headers: { ...(init.headers as Record<string, string>), origin: "chrome-extension://abcdefghijklmnopabcdefghijklmnop" } } : init);
+    const meta = await lib.discover(browser, ORIGIN);
+    await expect(lib.register(browser, meta, REDIRECT)).rejects.toThrow(/needs an update before a browser extension can sign in/);
+    const token = await browser(meta.tokenEndpoint, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: "grant_type=refresh_token&client_id=x&refresh_token=y" });
+    expect(token.status).toBe(403);
+    // Calls with a token are allowed from any origin, so saving works once the extension has one.
+    const { token: accessToken } = await h.connect({ name: "Bookmarks browser extension" });
+    const session = lib.createSession({ fetcher: browser, load: async () => ({ app: ORIGIN, accessToken, refreshToken: null, clientId: "c", tokenEndpoint: meta.tokenEndpoint, resource: ORIGIN, expiresAt: Date.now() + 3_600_000 }), save: async () => undefined });
+    expect((await lib.sendItems(session, "extension", [{ url: "https://example.test/from-the-browser" }])).outcome).toBe("ok");
+  });
+
+  // The rest of the flow, with the sign-in requests sent the way a server-side client sends them (no Origin).
   it("registers, asks on the consent screen, saves, refreshes, and is listed in Settings", async () => {
     const h = await harness();
     const fetcher = (url: string, init?: RequestInit) => h.request(url, init);

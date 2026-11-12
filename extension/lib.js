@@ -138,6 +138,8 @@ export async function register(fetcher, meta, redirectUri, name = CLIENT_NAME) {
     body: JSON.stringify({ client_name: name, redirect_uris: [redirectUri], token_endpoint_auth_method: 'none', grant_types: ['authorization_code', 'refresh_token'], response_types: ['code'], software_id: 'bookmarks-extension' }),
   });
   const body = await json(response);
+  // Bookmarks' kit refuses sign-in requests from another origin, and Chrome marks this one as the extension's (docs/parity.md).
+  if (response.status === 403) throw new Error('Bookmarks didn\'t accept a connection from this extension. Its server needs an update before a browser extension can sign in.');
   if (!response.ok || !body?.client_id) throw new Error('Bookmarks refused to register this browser. Try again.');
   return body.client_id;
 }
