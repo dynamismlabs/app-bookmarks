@@ -123,8 +123,8 @@ async function connect(app) {
   const tokens = await exchangeCode(fetcher, meta, clientId, redirectUri, codeFrom(redirected, state), verifier);
   const connection = connectionFor(app, meta, clientId, tokens);
   await serial(() => chrome.storage.local.set({ connection, mirror: true, disconnected: false, lastError: null }));
-  // Check it can add links: a connection allowed only to read gets an error here.
-  const check = await session.call(SAVE_TOOL, { via: 'extension', items: [] });
+  // Check it can add links without adding one: a page that isn't on the web is counted as invalid and never saved. A connection allowed only to read gets an error here.
+  const check = await session.call(SAVE_TOOL, { via: 'extension', items: [{ url: 'about:blank' }] });
   if (check.outcome === 'disconnected') {
     await serial(() => chrome.storage.local.remove(['connection']));
     throw new Error('Bookmarks connected this browser to read only. Connect again and allow it to add and change records.');

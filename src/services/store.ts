@@ -93,31 +93,77 @@ export function bookmarksFor(platform: Platform, userId: string) {
   }
 
   /** One link into the records. Repeats merge and never make a second record. */
-  async function saveOne(input: SaveLink, via: Via, options: { fictional?: boolean } = {}): Promise<SaveOutcome> {
+  /** What a save holds once it is cleaned, or null when it isn't a web link. */
+  function prepare(input: SaveLink) {
     const link = parseLink(input.url);
-    if (!link) return { status: "invalid" };
-    const given = input.title?.replace(/\s+/g, " ").trim().slice(0, 500) || null;
-    const note = input.note?.trim().slice(0, 4000) || null;
-    const tags = cleanTags(input.tags ?? []);
-    const savedAt = parseSavedAt(input.savedAt);
+    if (!link) return null;
     const text = input.pageText ? clipText(input.pageText.replace(/\u0000/g, "").trim()) || null : null;
-    const excerpt = input.excerpt?.replace(/\s+/g, " ").trim().slice(0, MAX_EXCERPT) || (text ? excerptOf(text) : null);
+    return {
+      link, text,
+      given: input.title?.replace(/\s+/g, " ").trim().slice(0, 500) || null,
+      note: input.note?.trim().slice(0, 4000) || null,
+      tags: cleanTags(input.tags ?? []),
+      savedAt: parseSavedAt(input.savedAt),
+      excerpt: input.excerpt?.replace(/\s+/g, " ").trim().slice(0, MAX_EXCERPT) || (text ? excerptOf(text) : null),
+    };
+  }
+  type Prepared = NonNullable<ReturnType<typeof prepare>>;
+  /** A new record, and its page text if the caller had it. The insert does nothing if the page is already saved. */
+  function insertQueries({ link, text, given, note, tags, savedAt, excerpt }: Prepared, via: Via, fictional: boolean) {
+    const id = crypto.randomUUID(), writeToken = token(), time = stamp();
+    const queries: Query[] = [
+      {
+        sql: `INSERT INTO bookmarks (id, user_id, created_at, updated_at, revision, write_token, url, url_key, site, title, title_source, note, tags, saved_at, via, excerpt, page_state, page_source, page_chars, page_at, page_attempts, page_next_at, fictional)
+          VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?) ON CONFLICT (user_id, url_key) DO NOTHING RETURNING seq`,
+        params: [id, userId, time, time, writeToken, link.url, link.key, link.site, given ?? link.site, given ? "given" : "link", note, JSON.stringify(tags), savedAt ?? time, via, excerpt,
+          text ? "read" : "waiting", text ? "browser" : null, text?.length ?? 0, text ? time : null, text ? null : time, fictional ? 1 : 0],
+        method: "all",
+      },
+      ...(text ? [bodyStatement(id, writeToken, text)] : []),
+    ];
+    return { id, queries };
+  }
+
+  /**
+   * Many links at once (an import, or a batch from the browser). Links not yet
+   * saved go in together, a few hundred per transaction. Anything already
+   * saved, or saved by someone else meanwhile, merges one by one.
+   */
+  async function saveMany(inputs: readonly SaveLink[], via: Via, options: { fictional?: boolean } = {}): Promise<SaveOutcome[]> {
+    const prepared = inputs.map(prepare);
+    const outcomes: (SaveOutcome | undefined)[] = prepared.map((item) => (item ? undefined : { status: "invalid" as const }));
+    const known = new Set<string>();
+    const keys = [...new Set(prepared.flatMap((item) => (item ? [item.link.key] : [])))];
+    for (let index = 0; index < keys.length; index += 90) {
+      const chunk = keys.slice(index, index + 90);
+      for (const row of await all(`SELECT url_key FROM bookmarks WHERE user_id = ? AND url_key IN (${chunk.map(() => "?").join(", ")})`, userId, ...chunk)) known.add(String(row[0]));
+    }
+    const fresh = prepared.flatMap((item, index) => (item && !known.has(item.link.key) ? [index] : []));
+    for (let start = 0; start < fresh.length; start += 250) {
+      const chunk = fresh.slice(start, start + 250).map((index) => ({ index, ...insertQueries(prepared[index]!, via, !!options.fictional) }));
+      const results = await platform.driver.batch(chunk.flatMap((item) => item.queries));
+      let at = 0;
+      for (const item of chunk) {
+        if (results[at].rows.length) outcomes[item.index] = { status: "created", id: item.id };
+        at += item.queries.length;
+      }
+    }
+    // Repeats within the batch, and pages already saved, merge in order.
+    for (const [index, outcome] of outcomes.entries()) if (!outcome) outcomes[index] = await saveOne(inputs[index], via, options);
+    return outcomes as SaveOutcome[];
+  }
+
+  async function saveOne(input: SaveLink, via: Via, options: { fictional?: boolean } = {}): Promise<SaveOutcome> {
+    const item = prepare(input);
+    if (!item) return { status: "invalid" };
+    const { link, given, note, tags, savedAt, text, excerpt } = item;
     for (let attempt = 0; attempt < RETRIES; attempt++) {
       const existing = await byKey(link.key);
       const time = stamp();
       const writeToken = token();
       if (!existing) {
-        const id = crypto.randomUUID();
-        const [inserted] = await platform.driver.batch([
-          {
-            sql: `INSERT INTO bookmarks (id, user_id, created_at, updated_at, revision, write_token, url, url_key, site, title, title_source, note, tags, saved_at, via, excerpt, page_state, page_source, page_chars, page_at, page_attempts, page_next_at, fictional)
-              VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?) ON CONFLICT (user_id, url_key) DO NOTHING RETURNING seq`,
-            params: [id, userId, time, time, writeToken, link.url, link.key, link.site, given ?? link.site, given ? "given" : "link", note, JSON.stringify(tags), savedAt ?? time, via, excerpt,
-              text ? "read" : "waiting", text ? "browser" : null, text?.length ?? 0, text ? time : null, text ? null : time, options.fictional ? 1 : 0],
-            method: "all",
-          },
-          ...(text ? [bodyStatement(id, writeToken, text)] : []),
-        ]);
+        const { id, queries } = insertQueries(item, via, !!options.fictional);
+        const [inserted] = await platform.driver.batch(queries);
         if (inserted.rows.length) return { status: "created", id };
         continue; // Saved by someone else a moment ago: merge into theirs.
       }
@@ -264,7 +310,7 @@ export function bookmarksFor(platform: Platform, userId: string) {
 
   return {
     platform, userId, run, one, all,
-    bookmark, byKey, pageText, saveOne, edit, remove, newest, search, tagCounts, counts, dueForReading, recordPage, setAttempt, failExhausted, dataRevision, getState, setState,
+    bookmark, byKey, pageText, saveOne, saveMany, edit, remove, newest, search, tagCounts, counts, dueForReading, recordPage, setAttempt, failExhausted, dataRevision, getState, setState,
   };
 }
 export type Bookmarks = ReturnType<typeof bookmarksFor>;

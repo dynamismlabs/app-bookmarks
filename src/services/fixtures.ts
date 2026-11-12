@@ -21,8 +21,7 @@ export const FICTIONAL_LINKS: { url: string; title: string; tags: string[]; days
 export async function seedFixtures(t: Bookmarks) {
   if (await t.getState("fixture.seeded")) return false;
   const now = clock.now().getTime();
-  for (const link of FICTIONAL_LINKS)
-    await t.saveOne({ url: link.url, title: link.title, tags: link.tags, note: link.note, pageText: link.text, savedAt: new Date(now - link.days * DAY).toISOString() }, "fixture", { fictional: true });
+  await t.saveMany(FICTIONAL_LINKS.map((link) => ({ url: link.url, title: link.title, tags: link.tags, note: link.note, pageText: link.text, savedAt: new Date(now - link.days * DAY).toISOString() })), "fixture", { fictional: true });
   await t.setState("fixture.seeded", "true");
   return true;
 }

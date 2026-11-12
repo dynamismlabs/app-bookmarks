@@ -80,8 +80,7 @@ export function importsFor(t: Bookmarks) {
     const links = JSON.parse(String(row[1])) as ImportedLink[];
     const counts = { added: 0, updated: 0, unchanged: 0, invalid: 0 };
     try {
-      for (const link of links) {
-        const outcome = await t.saveOne(link, "import");
+      for (const outcome of await t.saveMany(links, "import")) {
         if (outcome.status === "created") counts.added++;
         else if (outcome.status === "updated") counts.updated++;
         else if (outcome.status === "unchanged") counts.unchanged++;
