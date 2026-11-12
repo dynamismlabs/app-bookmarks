@@ -1,0 +1,14 @@
+{
+  "tools": {
+    "ri__read_web_page": {
+      "result": {
+        "outcome": "read",
+        "status": 200,
+        "finalUrl": "https://pages.example/fixture",
+        "contentType": "text/html",
+        "text": "<html><head><title>A fictional page</title></head><body><article><p>This is fictional page text from the fixture hub. It stands in for Ri's read_web_page in tests, change checks and the preview, so no real page is ever requested. Every waiting link reads as this page, and search finds it by words like lighthouse, marmalade and compass.</p></article></body></html>",
+        "truncated": false
+      }
+    }
+  }
+}

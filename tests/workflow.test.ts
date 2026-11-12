@@ -499,3 +499,19 @@ describe("the preview", () => {
     expect((await h.call("list_bookmarks", { query: "tide" })).items[0].title).toBe("Tide tables for small harbors");
   });
 });
+
+describe("the preview script", () => {
+  it("seeds a disposable data directory once, with fixtures for the hub", async () => {
+    const fs = await import("node:fs/promises");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const { seedPreview } = await import("../scripts/preview");
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "bookmarks-preview-test-"));
+    try {
+      expect(await seedPreview(dir)).toBe(true);
+      expect(await seedPreview(dir)).toBe(false);
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+    const fixtures = JSON.parse(await fs.readFile(path.join(import.meta.dirname, "../fixtures/connectors.json"), "utf8"));
+    expect(Object.keys(fixtures.tools)).toEqual([READ_WEB_PAGE]);
+  });
+});

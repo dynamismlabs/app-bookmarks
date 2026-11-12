@@ -13,7 +13,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "extension:package": "tsx scripts/package-extension.ts",
-    "preview": "tsx scripts/preview.ts"
+    "preview": "tsx scripts/preview.ts",
+    "test:browser": "BROWSER_TESTS=1 vitest run tests/extension-browser.test.ts"
   },
   "dependencies": {
     "@app-builder/core": "file:vendor/app-builder-core-0.2.0.tgz",
