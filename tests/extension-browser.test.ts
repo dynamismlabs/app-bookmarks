@@ -161,10 +161,22 @@ run("the extension in Chromium", () => {
     expect(await worker.evaluate(() => chrome.action.getBadgeText({}))).toBe("!");
   });
   it("can't refresh an expired token from inside the browser today, and asks to connect again", async () => {
-    await connected({ expiresAt: 0, refreshToken: "a-refresh-token" });
+    // A real connection, made the way a server-side client makes one (no Origin), so the refresh token is good.
+    const lib = await import("../extension/lib.js" as string);
+    const { approveInBrowser } = await import("./oauth");
+    const redirect = `https://${extensionId}.chromiumapp.org/bookmarks`;
+    const meta = await lib.discover(fetch, origin);
+    const clientId = await lib.register(fetch, meta, redirect);
+    const { verifier, challenge } = await lib.pkcePair();
+    const approved = await approveInBrowser(lib.authorizeUrl(meta, clientId, redirect, challenge, "s"), (request: Request) => fetch(request));
+    const tokens = await lib.exchangeCode(fetch, meta, clientId, redirect, lib.codeFrom(approved.redirectURI, "s"), verifier);
+    await worker.evaluate(async (value) => { await chrome.storage.local.set({ connection: value, mirror: true }); }, { ...lib.connectionFor(origin, meta, clientId, tokens), expiresAt: 0 });
     await addBookmark({ title: "Expired", url: "https://example.test/expired" });
     const state = await until(() => worker.evaluate(async () => chrome.storage.local.get(["disconnected", "lastError"])), (value: { disconnected?: boolean }) => !!value.disconnected);
-    expect(state).toMatchObject({ disconnected: true, lastError: expect.stringMatching(/connect again/i) });
+    expect(state).toMatchObject({ disconnected: true, lastError: "Connect this browser to Bookmarks again" });
+    // The same refresh token still works from outside the browser: the refusal was the origin check, not the token.
+    const refreshed = await fetch(meta.tokenEndpoint, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ grant_type: "refresh_token", client_id: clientId, refresh_token: tokens.refreshToken, resource: meta.resource }) });
+    expect(refreshed.status).toBe(200);
   });
   it("imports every bookmark in batches, with folders as tags, and can repeat", async () => {
     await connected({});
