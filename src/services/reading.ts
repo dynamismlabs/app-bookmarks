@@ -44,13 +44,18 @@ export async function readingStep(ctx: Context): Promise<StepResult> {
   const t = bookmarksFor(ctx.platform, ctx.viewer.id);
   await t.failExhausted(MAX_ATTEMPTS);
   const due = await t.dueForReading(PAGES_PER_STEP);
-  await t.setState("reading.lastStepAt", clock.now().toISOString());
-  if (!due.length) return { status: "idle", read: 0, waiting: (await t.counts()).waiting, summary: "Nothing is due to be read" };
+  // "Reading is running" means a step ran and could read. A step Ri refused says so in Settings instead.
+  const ran = () => t.setState("reading.lastStepAt", clock.now().toISOString());
+  if (!due.length) {
+    await ran();
+    return { status: "idle", read: 0, waiting: (await t.counts()).waiting, summary: "Nothing is due to be read" };
+  }
   const hub = connectors(ctx);
   try {
     // Ask before the first read, so a missing grant is one clear message rather than twelve failures.
     if (!(await hub.tools()).includes(READ_WEB_PAGE))
       throw new SetupRequired("Bookmarks hasn't been allowed to read web pages. Allow \"Read public web pages\" for Bookmarks in Ri, then run this again from Settings.");
+    await ran();
     const stopAt = Date.now() + BUDGET_MS;
     const queue = [...due];
     let read = 0;

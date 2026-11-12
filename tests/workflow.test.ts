@@ -249,6 +249,8 @@ describe("reading pages", () => {
     // Ri not answering: the runner retries later.
     await expect(h.step(fixtureSource({ unavailable: true }))).rejects.toBeInstanceOf(SourceUnavailable);
     expect((await h.call("list_bookmarks", {})).items.every((item: { page: { state: string } }) => item.page.state === "waiting")).toBe(true);
+    // The screen keeps saying to connect Ri, rather than that pages are being read.
+    expect((await h.call("list_bookmarks", {})).setup.reading).toBe(false);
     // Being refused says nothing about the pages, so it doesn't count against them.
     expect(await h.t.dueForReading(10)).toHaveLength(5);
     expect((await h.t.dueForReading(10)).every((row) => row.pageAttempts === 0)).toBe(true);

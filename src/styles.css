@@ -10,6 +10,11 @@ button:focus-visible, a:focus-visible { outline: 3px solid #b9c9a7; outline-offs
 .brand { display: flex; align-items: center; gap: 12px; font-size: 20px; font-weight: 650; letter-spacing: -.7px; }
 .brand-mark { width: 31px; height: 33px; font-size: 30px; color: var(--accent); line-height: 1; }
 .header-links { display: flex; gap: 22px; font-size: 13px; color: #677367; }
+.eyebrow { text-transform: uppercase; color: #7f8776; letter-spacing: 2px; font-size: 10px; font-weight: 650; margin: 0 0 14px; }
+h1 { font-family: "Instrument Serif", "Iowan Old Style", "Baskerville", Georgia, serif; font-weight: 400; font-size: 49px; line-height: 1.12; letter-spacing: -1.8px; margin: 0 0 16px; }
+h2 { font-family: "Instrument Serif", "Iowan Old Style", Georgia, serif; font-size: 30px; font-weight: 400; letter-spacing: -.8px; margin: 0 0 18px; }
+.primary, .secondary { border: 0; border-radius: 7px; background: var(--accent); color: #fff; padding: 12px 18px; font-size: 12px; font-weight: 550; min-height: 42px; white-space: nowrap; }
+.secondary { color: var(--accent); background: #e8ece2; }
 .library-footer { display: flex; justify-content: space-between; color: #929a89; font-size: 10px; padding: 24px 0 45px; }
 .empty-state { padding: 85px 20px; text-align: center; }.empty-state p { color: var(--muted); font-size: 13px; margin-bottom: 25px; }.empty-book { font-size: 38px; display: block; color: #94a184; margin-bottom: 20px; }
 .empty, .loading { color: var(--muted); padding: 70px 20px; text-align: center; font-size: 14px; }
@@ -101,6 +106,7 @@ mark { background: #f3e3a6; color: inherit; border-radius: 2px; }
 .page-text .text-button { padding-left: 0; }
 .page-body { font-size: 13px; line-height: 1.6; white-space: pre-wrap; color: #4b554b; }
 .actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.primary:hover { filter: brightness(1.08); }
 .danger { border: 0; border-radius: 7px; background: #f3e1dd; color: #9f4337; padding: 12px 18px; font-size: 12px; font-weight: 550; min-height: 42px; }
 .as-link { background: none; border: 0; padding: 0; color: inherit; text-align: left; font: inherit; cursor: pointer; }
 .copied { font-size: 11px; color: var(--muted); }
