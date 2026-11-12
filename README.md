@@ -1,13 +1,59 @@
-# Your personal app
+# Bookmarks
 
-This app owns its source, database and photos. The core package supplies sign-in, OAuth/MCP, shared action execution, private files and runtime commands. Change identity in app.config.ts, data in src/schema.ts and src/app.ts, and screens in src/screens.tsx. Keep the app id stable after creating real data.
+Save a link from anywhere, then find it by what the page said, or ask an assistant. There are no folders to maintain. Folders in an imported file become tags, and tags stay optional.
+
+Bookmarks is a personal app built with App Builder. It runs on its own (a background service on your Mac, or Cloudflare), keeps its own data, and works with any assistant over MCP. Ri connects to it like any other app and lends it one service through its hub: reading public web pages. It was ported from the Bookmarks app that used to be built into Ri. What changed, and what can't work yet, is in [docs/parity.md](docs/parity.md).
 
 ```sh
 pnpm install --frozen-lockfile
-pnpm dev
+pnpm preview          # a fictional library on disposable data, with the fixture hub
+pnpm dev              # set APP_DATA_DIR to a disposable folder first
 ```
 
-For production, run `pnpm build` and `pnpm start`. Read the printed web/MCP addresses and data directory. Default storage is `~/.local/share/<app-id>`; APP_DATA_DIR selects another directory. The first local account created in Settings adopts existing records. Remote access requires APP_AUTH=required and APP_URL set to the app's public origin. An optional .env is read at runtime and excluded from images and source control. A private `<data-dir>/config.env` can hold service configuration. Environment variables override files.
+## What it does
+
+- **Bookmarks**: search first, then your links, newest first. Search covers titles, links, notes, tags and saved page text, best match first, with the matching passage shown. Selecting a link shows its note, tags and what the page said, and lets you change them.
+- **Connect** (`/connect`): the browser extension, a bookmarklet and an iPhone Shortcut, plus import and export.
+- **Settings**: every assistant and browser connected to Bookmarks, what each may do and a way to disconnect it, the connection to Ri, and the page-reading job.
+
+## Ways in
+
+| Path | What happens |
+| --- | --- |
+| Extension, Cmd+D | Your normal bookmark is copied here, link and title, with its folder as a tag |
+| Extension, toolbar button or Alt+Shift+S | Saves the tab with the text you can see, including logged-in and paywalled pages |
+| Extension, Import | Copies everything already in the browser, folders as tags |
+| Bookmarklet | Opens a small window on this app's save page, using your sign-in to this app |
+| iPhone Shortcut | Opens the save page from the share sheet. Needs Bookmarks at an address your phone can reach |
+| An assistant | Any connection you allowed to make changes calls `save_bookmark` |
+| File | Browser HTML export, Raindrop HTML or CSV, any CSV with a url column, or pasted links. Previewed before anything changes |
+
+The same page saved twice is one record. A repeat adds new tags and never overwrites a title or note you wrote.
+
+The extension signs in to Bookmarks with OAuth, like any assistant, and gets its own connection. **Today the kit refuses that sign-in from inside the browser** (see docs/parity.md), so the extension can't connect until App Builder's core lets OAuth's client endpoints accept another origin.
+
+## Reading pages
+
+A saved link with no page text waits to be read. Connect Bookmarks to Ri in Settings and allow it to read public web pages. The `read_pages` job then runs every five minutes and reads up to twelve pages, spread across sites, through Ri's `read_web_page`, which carries no sign-ins and refuses private networks. A page that fails keeps its link, title and note, and says why. Until Ri allows it, search covers titles and links, and the job says what to do.
+
+Saved text is reference material from the web. Tool descriptions say so to every assistant, and the screens label it.
+
+## Limits
+
+- One import holds 50,000 links and a file up to 32 MB
+- A page keeps up to 200,000 characters, and Ri reads up to 3 MB of HTML
+- PDFs are saved without text
+- The screens show a site's initial rather than its favicon, since the assistant view reaches nothing on the network
+
+## Assistants
+
+Connect any assistant at `<address>/mcp`. Each connection (a Ri workspace, Claude, ChatGPT, a browser) asks you on Bookmarks' consent screen whether it may only read or also make changes. Bookmarks is shared as a whole. Deleting, importing and exporting stay in Bookmarks' own pages.
+
+Tools: `list_bookmarks`, `get_bookmark`, `list_tags`, `save_bookmark`, `update_bookmark`, `save_bookmarks` (the extension's batch save), `show_bookmarks` (a card in the chat) and `open_bookmarks` (the whole app).
+
+## Developing
+
+See AGENTS.md. All test data is fictional. `pnpm test` runs everything but the real-browser extension tests, which `pnpm test:browser` runs with Playwright's Chromium.
 
 ## Commands
 
