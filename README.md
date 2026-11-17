@@ -47,13 +47,15 @@ Saved text is reference material from the web. Tool descriptions say so to every
 
 ## Assistants
 
-Connect any assistant at `<address>/mcp`. Each connection (a Ri workspace, Claude, ChatGPT, a browser) asks you on Bookmarks' consent screen whether it may only read or also make changes. Bookmarks is shared as a whole. Deleting, importing and exporting stay in Bookmarks' own pages.
+Connect any assistant at `<address>/mcp`. Each connection (a Ri workspace, Claude, ChatGPT, a browser) asks you on Bookmarks' consent screen whether it may only read or also make changes. Bookmarks is shared as a whole.
 
-Tools: `list_bookmarks`, `get_bookmark`, `list_tags`, `save_bookmark`, `update_bookmark`, `save_bookmarks` (the extension's batch save), `show_bookmarks` (a card in the chat) and `open_bookmarks` (the whole app).
+Inside an assistant that shows MCP Apps views (Ri, ChatGPT, Claude) Bookmarks is the whole app: `open_bookmarks` opens it, at a saved link or a search when asked, and the @ menu offers your saved links. Deleting, importing, exporting and the extension download work there too, as actions the assistant's model never sees. Saved links open through the assistant, "Ask about this link" puts a question in the chat for you to send, and Open in browser takes you to Bookmarks' own page for Settings and the bookmarklet.
+
+Tools for the model: `list_bookmarks`, `get_bookmark`, `list_tags`, `save_bookmark`, `update_bookmark`, `save_bookmarks` (the extension's batch save), `show_bookmarks` (a card in the chat) and `open_bookmarks` (the whole app).
 
 ## Developing
 
-See AGENTS.md. All test data is fictional. `pnpm test` runs everything but the real-browser extension tests, which `pnpm test:browser` runs with Playwright's Chromium.
+See AGENTS.md. All test data is fictional. `pnpm test` runs everything but the real-browser tests. `pnpm test:browser` builds, then runs the extension and the assistant view (in the kit's strict MCP Apps test host) in Playwright's Chromium.
 
 ## Commands
 
