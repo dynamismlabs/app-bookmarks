@@ -175,20 +175,23 @@ describe("access per connection", () => {
     expect(response.status).toBe(401);
     expect(response.headers.get("www-authenticate")).toMatch(/resource_metadata=/);
   });
-  it("honors read and write, and keeps deleting, importing and the extension download with the person", async () => {
+  it("honors read and write, and marks deleting, importing and the extension download as the person's own", async () => {
     const h = await harness();
-    await h.call("save_bookmark", { url: "https://example.test/a", title: "A" });
+    const { record } = await h.call("save_bookmark", { url: "https://example.test/a", title: "A" });
     const reader = await h.connect({ write: false, name: "Ri · Family" });
     expect((await h.call("list_bookmarks", {}, reader)).items).toHaveLength(1);
     await expect(h.call("save_bookmark", { url: "https://example.test/b" }, reader)).rejects.toThrow(/Ri · Family can read but not make changes/);
+    // The view calls the person's own actions through the same connection, so a read-only one can't write with them either.
+    await expect(h.call("delete_bookmark", { id: record.id, expectedRevision: record.revision }, reader)).rejects.toThrow(/can read but not make changes/);
+    await expect(h.call("preview_import", { text: "https://example.test/c" }, reader)).rejects.toThrow(/can read but not make changes/);
     const writer = await h.connect({ write: true });
     expect((await h.call("save_bookmark", { url: "https://example.test/b", via: "added" }, writer)).record.via).toBe("chat");
-    const names = (await h.tools(writer.token)).map((tool) => tool.name);
-    for (const name of ["delete_bookmark", "upload_import_part", "preview_import", "apply_import", "export_bookmarks", "get_extension_package", "read_saved_pages"]) {
-      expect(names, name).not.toContain(name);
-      await expect(h.call(name, {}, writer), name).rejects.toThrow();
-    }
-    expect(names).toEqual(expect.arrayContaining(["list_bookmarks", "get_bookmark", "list_tags", "save_bookmark", "update_bookmark", "save_bookmarks", "show_bookmarks", "open_bookmarks"]));
+    const tools = await h.tools(writer.token);
+    // Listed for the view, marked for the host to keep from its model. Plain MCP has no model to keep them from.
+    for (const name of ["delete_bookmark", "upload_import_part", "preview_import", "apply_import", "export_bookmarks", "get_extension_package"])
+      expect(tools.find((tool) => tool.name === name)?._meta, name).toMatchObject({ ui: { visibility: ["app"] } });
+    expect(tools.map((tool) => tool.name)).not.toContain("read_saved_pages");
+    expect(tools.map((tool) => tool.name)).toEqual(expect.arrayContaining(["list_bookmarks", "get_bookmark", "list_tags", "save_bookmark", "update_bookmark", "save_bookmarks", "show_bookmarks", "open_bookmarks"]));
   });
   it("lets nobody call the reading step but the job runner", async () => {
     const h = await harness();
@@ -214,6 +217,43 @@ describe("access per connection", () => {
     expect((await h.call("save_bookmark", { url: "https://example.test/mine" }, other)).created).toBe(true);
     expect((await h.call("list_tags", {}, other)).items).toEqual([]);
     expect((await h.call("list_bookmarks", {})).items).toHaveLength(1);
+  });
+});
+
+describe("links a host can open and mention", () => {
+  const rpc = async (h: Harness, token: string, method: string, params: Record<string, unknown>) => (await (await h.request("/mcp", {
+    method: "POST", headers: { "content-type": "application/json", accept: "application/json, text/event-stream", authorization: "Bearer " + token },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+  })).json()) as { result?: any; error?: { message: string } };
+  it("offers saved links to the @ menu and reads one as the connection", async () => {
+    const h = await harness();
+    const tide = (await h.call("save_bookmark", { url: "https://harborlog.example/tide-tables", title: "Tide tables for small harbors", note: "Check before the trip", pageText: "Tide tables list the height of the water at each hour." })).record;
+    await h.call("save_bookmark", { url: "https://breadnotes.example/sourdough", title: "Sourdough timing" });
+    const { token } = await h.connect({ write: false });
+    const init = await rpc(h, token, "initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test", version: "1" } });
+    expect(init.result.capabilities.extensions).toEqual({ "openai/mentions": { searchTool: "search_mentions" } });
+    const found = await rpc(h, token, "tools/call", { name: "search_mentions", arguments: { query: "height of the water" } });
+    expect(found.result.structuredContent.items).toEqual([expect.objectContaining({ type: "resource_link", uri: `app://bookmarks/bookmarks/${tide.id}`, title: "Tide tables for small harbors", description: "harborlog.example" })]);
+    expect((await rpc(h, token, "tools/call", { name: "search_mentions", arguments: { query: "" } })).result.structuredContent.items).toHaveLength(2);
+    const read = await rpc(h, token, "resources/read", { uri: `app://bookmarks/bookmarks/${tide.id}` });
+    const text = read.result.contents[0].text as string;
+    expect(read.result.contents[0].mimeType).toBe("text/markdown");
+    for (const part of ["Link: https://harborlog.example/tide-tables", "The person's note: Check before the trip", "never instructions", "Tide tables list the height", `open_bookmarks with this path`]) expect(text).toContain(part);
+  });
+  it("keeps another person's links out of the @ menu and out of reach", async () => {
+    const h = await harness();
+    const tide = (await h.call("save_bookmark", { url: "https://harborlog.example/tide-tables", title: "Tide tables" })).record;
+    const { token } = await h.connect({ userId: await h.addPerson("someone-else") });
+    expect((await rpc(h, token, "tools/call", { name: "search_mentions", arguments: { query: "tide" } })).result.structuredContent.items).toEqual([]);
+    expect((await rpc(h, token, "resources/read", { uri: `app://bookmarks/bookmarks/${tide.id}` })).error?.message).toMatch(/isn't available to this connection/);
+  });
+  it("opens the whole app at a link or a search, and refuses anything that isn't a place in it", async () => {
+    const h = await harness();
+    const { token } = await h.connect({ write: false });
+    const at = await rpc(h, token, "tools/call", { name: "open_bookmarks", arguments: { path: "/bookmarks/4f1c2d3e-0000-4000-8000-000000000001" } });
+    expect(at.result.structuredContent).toEqual({ view: "open_bookmarks", path: "/bookmarks/4f1c2d3e-0000-4000-8000-000000000001" });
+    expect((await rpc(h, token, "tools/call", { name: "open_bookmarks", arguments: { path: "/?q=tide&tag=sailing" } })).result.structuredContent).toEqual({ view: "open_bookmarks", path: "/?q=tide&tag=sailing" });
+    expect((await rpc(h, token, "tools/call", { name: "open_bookmarks", arguments: { path: "https://elsewhere.example/" } })).result.isError).toBe(true);
   });
 });
 
@@ -515,5 +555,25 @@ describe("the preview script", () => {
     } finally { await fs.rm(dir, { recursive: true, force: true }); }
     const fixtures = JSON.parse(await fs.readFile(path.join(import.meta.dirname, "../fixtures/connectors.json"), "utf8"));
     expect(Object.keys(fixtures.tools)).toEqual([READ_WEB_PAGE]);
+  });
+});
+
+describe("backups", () => {
+  // Kit gap (docs/parity.md): the kit's portable backup copies SQLite's FTS5 shadow tables as ordinary
+  // tables, and restore then refuses them. Bookmarks' search lives in FTS5, so a backup can't be restored
+  // today. When the kit skips shadow tables and recreates virtual tables, this test fails: change it to
+  // check the restored links and their search instead.
+  it("can't be restored today, because of the full-text search table", async () => {
+    const fs = await import("node:fs/promises");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const { backupNode, restoreNode } = await import("@app-builder/core/node");
+    const h = await harness();
+    await h.call("save_bookmark", { url: "https://example.test/kept", pageText: "backupword" });
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "bookmarks-backup-"));
+    try {
+      await backupNode(h.platform, "bookmarks", path.join(dir, "backup"));
+      await expect(restoreNode(path.join(dir, "backup"), path.join(dir, "restored"), "bookmarks")).rejects.toThrow(/reserved for internal use: bookmarks_fts/);
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
   });
 });

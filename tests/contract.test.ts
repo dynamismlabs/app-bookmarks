@@ -8,17 +8,24 @@ const tool = (name: string) => contract.mcp.tools.find((item: { name: string }) 
 const action = (name: string) => contract.actions.find((item) => item.name === name)!;
 
 describe("contract", () => {
-  it("offers assistants the data tools, one card and the whole app", () => {
-    expect(contract.mcp.tools.map((item: { name: string }) => item.name).sort()).toEqual(["get_bookmark", "list_bookmarks", "list_tags", "open_bookmarks", "save_bookmark", "save_bookmarks", "show_bookmarks", "update_bookmark"]);
+  it("offers the model the data tools, one card and the whole app, and the view the person's own actions", () => {
+    const shown = (item: { _meta?: { ui?: { visibility?: string[] } } }) => (item._meta?.ui?.visibility ?? ["model", "app"]).includes("model");
+    expect(contract.mcp.tools.filter(shown).map((item: { name: string }) => item.name).sort()).toEqual(["get_bookmark", "list_bookmarks", "list_tags", "open_bookmarks", "save_bookmark", "save_bookmarks", "show_bookmarks", "update_bookmark"]);
+    const viewOnly = contract.mcp.tools.filter((item: { _meta?: unknown }) => !shown(item as never));
+    expect(viewOnly.map((item: { name: string }) => item.name).sort()).toEqual(["apply_import", "delete_bookmark", "export_bookmarks", "get_extension_package", "preview_import", "search_mentions", "upload_import_part"]);
+    for (const item of viewOnly) expect(item._meta, item.name).toMatchObject({ ui: { visibility: ["app"] }, "openai/visibility": "private" });
     expect(tool("show_bookmarks")._meta.ui.resourceUri).toBe("ui://bookmarks/main");
     expect(tool("open_bookmarks")._meta["openai/ui"].entrypoints).toEqual([{ type: "global" }]);
+    expect(tool("open_bookmarks").inputSchema.properties.path.description).toContain("/bookmarks/<id> opens a saved link");
     expect(contract.mcp.resources).toEqual([expect.objectContaining({ uri: "ui://bookmarks/main", mimeType: "text/html;profile=mcp-app" })]);
   });
   it("advertises an output schema on every tool", () => {
     for (const item of contract.mcp.tools) expect(item.outputSchema, item.name).toMatchObject({ type: "object" });
   });
   it("keeps management and destructive actions with the person and background work with the job", () => {
-    for (const name of ["delete_bookmark", "upload_import_part", "preview_import", "apply_import", "export_bookmarks", "get_extension_package"]) expect(action(name).audience, name).toEqual(["user"]);
+    for (const name of ["delete_bookmark", "upload_import_part", "preview_import", "apply_import", "export_bookmarks", "get_extension_package"])
+      expect(action(name), name).toMatchObject({ audience: ["user", "agent"], visibility: ["app"] });
+    for (const name of ["list_bookmarks", "save_bookmark", "update_bookmark", "save_bookmarks"]) expect(action(name).visibility ?? ["model", "app"], name).toContain("model");
     expect(action("delete_bookmark").effect).toBe("delete");
     expect(action("read_saved_pages").audience).toEqual([]);
     expect(contract.jobs).toEqual([{ name: "read_pages", title: "Read saved pages", schedule: "every 5 minutes", action: "read_saved_pages" }]);
