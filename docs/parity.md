@@ -1,13 +1,13 @@
 # Bookmarks: parity with the app that was built into Ri
 
-Ri's Bookmarks app (`apps/bookmarks` at Ri commit `3c442810`) is ported here onto App Builder (core 0.2.2, kit `main` at `1713f6a`). This checklist covers every feature and behavior in the old README, AGENTS.md, plugin.json, contract and tests, including the browser extension.
+Ri's Bookmarks app (`apps/bookmarks` at Ri commit `3c442810`) is ported here onto App Builder (core 0.2.2, kit `main` at `ff47742`). This checklist covers every feature and behavior in the old README, AGENTS.md, plugin.json, contract and tests, including the browser extension.
 
 - **Works**: the same behavior, on the new path.
 - **Works differently**: the person or an assistant can still do it, in another way (says how).
 - **Can't work yet**: not possible on the new path as built (says why, and what would need to change in the kit or Ri).
 - **Verified in the test host**: checked in the kit's strict MCP Apps test host (a scripts-only sandbox that may not reach the network and behaves like Ri: it keeps view-only tools from its model, drafts `ui/message`, records links and downloads, and sends deep links). **In Ri**: then checked on November 16, 2026 in a disposable Ri at f55cdf96 on this Mac, on the web and in its desktop app, with dummy links only (not a Ri Home in everyday use, which runs on another computer). ChatGPT and Claude are still pending. Details in [Real hosts](#real-hosts), screenshots in `docs/parity/`.
 
-First checked on November 12, 2026, against kit `bc2c7f4`, with Ri's hub as read on Ri branch `claude/single-path-ri-approval-id`. Moved onto kit `1713f6a` (core 0.2.2, the full app in every host, shared spec §5) on November 16. Ri itself wasn't run.
+First checked on November 12, 2026, against kit `bc2c7f4`, with Ri's hub as read on Ri branch `claude/single-path-ri-approval-id`. Moved onto kit `1713f6a` (core 0.2.2, the full app in every host, shared spec §5) on November 16, then onto kit `ff47742` (backups that restore full-text search, production mode) on November 17. Ri itself wasn't run.
 
 ## In short
 
@@ -15,11 +15,10 @@ First checked on November 12, 2026, against kit `bc2c7f4`, with Ri's hub as read
 - **Now the whole app inside a host** (verified in the test host, and in a disposable Ri at f55cdf96 on the web and desktop. ChatGPT and Claude pending): deleting, importing, exporting and the extension download work in the view, kept from the model as view-only actions. Links open through the host, "Ask about this link" drafts a message, files save through the host, `open_bookmarks` opens at a link or a search, the @ menu offers saved links, the assistant hears the section, search and tag, and Open in browser covers the rest.
 - **Works differently**: the extension and every assistant connect with OAuth instead of a Ri key, so each browser shows up in Settings like any assistant. Reading pages is turned on by connecting Bookmarks to Ri and allowing "Read public web pages". The demo is `pnpm preview`.
 - **Can't work yet**:
-  1. **The extension can't sign in.** Chrome sends the extension's origin on its registration and token requests, and the kit answers 403 to any other origin except on `/mcp`. Everything after sign-in works in Chromium. Kit gap, still open on `1713f6a`.
+  1. **The extension can't sign in.** Chrome sends the extension's origin on its registration and token requests, and the kit answers 403 to any other origin except on `/mcp`. Everything after sign-in works in Chromium. Kit gap, still open on `ff47742`.
   2. **"Add links and nothing else."** The old extension and Shortcut keys could only add. A kit connection can read, or read and write. Kit gap: needs an add-only choice on the consent screen.
   3. **The iPhone Shortcut from a Mac-local app.** The phone can't reach `127.0.0.1`. A reachability question, not a host one: it works when Bookmarks runs at an address the phone can reach (Cloudflare, or a private network with sign-in).
-  4. **Restoring a backup.** The kit's portable backup copies the FTS5 search table's internal tables, and restore refuses them. Kit gap, pinned by a test.
-  5. **Settings inside a host.** The kit's Settings (connections, the Ri connection, the reading job) uses the app's own web routes, not tools, so inside a host it opens in the browser. Kit gap.
+  4. **Settings inside a host.** The kit's Settings (connections, the Ri connection, the reading job) uses the app's own web routes, not tools, so inside a host it opens in the browser. Kit gap.
 
 ## Finding and keeping links
 
@@ -187,21 +186,26 @@ Small things seen, not fixed: on the Connect screen, the inline "Settings" and "
 
 Closed by kit `1713f6a`: opening links from the view, drafting a message, saving files, view-only actions, opening `open_<app>` at a path, host links, the @ menu, the wider selection, and Open in browser.
 
+Closed by kit `ff47742`:
+- **Restoring a backup.** The backup leaves out the FTS5 index's internal tables and keeps its rows, its triggers and its views. A restore rebuilds the index. The backups test restores into an empty folder, then finds the saved links by their page text, and finds a link saved after the restore, so the triggers that keep search in step came back too.
+- **Drafts keep their trailing space.** "Using my bookmark “…”, " and "Search my bookmarks for " now reach the chat's draft as written, so the person types straight on.
+- **Production mode.** The service runs with `NODE_ENV=production`, and a failure reaches the view or an assistant without a stack or a file path.
+
 Still open:
 1. **Kit: accept another origin on OAuth's client endpoints** (register, token). Unblocks the extension, and any in-browser MCP client.
 2. **Kit: an add-only connection choice** (or per-tool scopes) on the consent screen, enforced like `write`.
-3. **Kit: restore FTS5 tables.** `backupNode` copies `bookmarks_fts_*` shadow tables and `restoreNode` refuses them ("object name reserved for internal use"). Skip shadow tables and recreate virtual tables from their SQL. People found the same (its K2).
-4. **Kit: Settings inside a host.** Its connections, Ri and jobs panels read web routes a view can't reach.
-5. **Kit: a revocation endpoint** in the authorization server, so a client can disconnect itself.
-6. **Kit: MCP server instructions**, so an app can tell assistants how to use it beyond tool descriptions.
-7. **Kit: name requested hub tools in Settings**, not only capabilities.
-8. **Hosts: visibility is theirs to enforce.** View-only actions rely on the host keeping them from its model (MCP Apps). Ri does. A host that doesn't would let a write connection's model delete or import.
-9. **Reachability: a local app from the phone** (Ri's remote address showing app pages, or Bookmarks at a reachable address), for the iPhone Shortcut. Shared spec open question 2.
+3. **Kit: Settings inside a host.** Its connections, Ri and jobs panels read web routes a view can't reach.
+4. **Kit: a revocation endpoint** in the authorization server, so a client can disconnect itself.
+5. **Kit: MCP server instructions**, so an app can tell assistants how to use it beyond tool descriptions.
+6. **Kit: name requested hub tools in Settings**, not only capabilities.
+7. **Hosts: visibility is theirs to enforce.** View-only actions rely on the host keeping them from its model (MCP Apps). Ri does. A host that doesn't would let a write connection's model delete or import.
+8. **Reachability: a local app from the phone** (Ri's remote address showing app pages, or Bookmarks at a reachable address), for the iPhone Shortcut. Shared spec open question 2.
 
 ## Verified
 
+- On kit `ff47742` (core 0.2.2), after `upgrade --core ~/dynamism/app-builder` and `change`: typecheck, tests, build, the rehearsal on a copy of the live data and the switch of `local.bookmarks` all passed.
 - On kit `1713f6a` (core 0.2.2), after `upgrade --core ~/dynamism/app-builder`: typecheck and the app's tests passed in the upgrade's own check.
-- `pnpm typecheck`, `pnpm test` (vitest: domain, workflow, contract, MCP with the official SDK client, @ mentions and open-at-path, the extension's logic and OAuth flow, the backup gap) and `pnpm build`.
+- `pnpm typecheck`, `pnpm test` (vitest: domain, workflow, contract, MCP with the official SDK client, @ mentions and open-at-path, the extension's logic and OAuth flow, backup and restore) and `pnpm build`.
 - `pnpm test:browser`, in Playwright's Chromium:
   - The extension, unzipped from the app's own package, against the real app.
   - The view in the kit's strict MCP Apps test host (`tests/host/browser-host.ts`, the kit's own `packages/core/test/browser-host.ts`), against the real app. Mirrors the kit's AppBridge tests: the model's tools, the @ menu, open at a link, Open in browser, links out, a drafted question, export and extension downloads, import, a host link, deleting from the view, a card opening a link, and the same view in a host with no drafts, links or downloads. The view reached nothing on the network.

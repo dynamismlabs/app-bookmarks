@@ -116,7 +116,7 @@ export function Library() {
           <Button className="primary" onClick={() => setAdding(true)}>Add a link</Button>
           <Button className="secondary" onClick={() => setImporting(true)}>Import</Button>
         </div>
-        {!!list.data?.setup.total && <AskInChat question="Search my bookmarks for" title="Search my bookmarks">Ask about my bookmarks</AskInChat>}
+        {!!list.data?.setup.total && <AskInChat question="Search my bookmarks for " title="Search my bookmarks">Ask about my bookmarks</AskInChat>}
         {!!tags.data?.items.length && <div className="tags" aria-label="Tags">
           {tag && <button type="button" className="chip active" onClick={() => go({ tag: "", id: null })}>All</button>}
           {tags.data.items.slice(0, 24).map((item) => <button type="button" key={item.tag} className={item.tag === tag ? "chip active" : "chip"} aria-pressed={item.tag === tag} onClick={() => go({ tag: item.tag === tag ? "" : item.tag, id: null })}>{item.tag}<span>{item.count}</span></button>)}
@@ -207,7 +207,7 @@ function Inspector({ id, query, onClose, onChanged }: { id: string; query: strin
         <Button type="button" className="danger" onClick={() => setDeleting(true)} disabled={busy}>Delete</Button></div>
     </Form>
     <div className="inspector-out">
-      <AskInChat question={`Using my bookmark “${record.title.slice(0, 120)}”,`} title={record.title.slice(0, 80)}>Ask about this link</AskInChat>
+      <AskInChat question={`Using my bookmark “${record.title.slice(0, 120)}”, `} title={record.title.slice(0, 80)}>Ask about this link</AskInChat>
       <OpenInBrowser path={`/bookmarks/${record.id}`} />
     </div>
     {text && <section className="page-text">

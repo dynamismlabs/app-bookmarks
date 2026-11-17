@@ -123,7 +123,7 @@ run("the view in a strict host", () => {
       await view.getByRole("button", { name: "Ask about this link" }).click();
       await view.getByText("It’s in the chat for you to edit and send.").waitFor();
       const [message] = (await host.asked()).messages;
-      expect(message).toMatchObject({ role: "user", content: [{ type: "text", text: "Using my bookmark “Tide tables for small harbors”," }] });
+      expect(message).toMatchObject({ role: "user", content: [{ type: "text", text: "Using my bookmark “Tide tables for small harbors”, " }] });
       expect(message._meta).toEqual({ "openai/message": { target: "active", send: false } });
       // A search reaches the assistant as the section's filters, and opens in the browser at the same search.
       await view.getByLabel("Search bookmarks").fill("sourdough");
@@ -179,7 +179,7 @@ run("the view in a strict host", () => {
       expect(await view.locator(".inspector").getByRole("link", { name: "Tide tables for small harbors" }).count()).toBe(0);
       await view.locator(".inspector").getByText("https://harborlog.example/tide-tables").first().waitFor();
       await view.getByText("Ask about this link").click();
-      expect(await view.locator(".inspector .ask-in-chat q").textContent()).toBe("Using my bookmark “Tide tables for small harbors”,");
+      expect(await view.locator(".inspector .ask-in-chat q").textContent()).toBe("Using my bookmark “Tide tables for small harbors”, ");
       await host.mount("open_bookmarks", { path: "/connect" }, { draft: false, openLinks: false, download: false });
       await view.getByRole("heading", { name: "Save from anywhere" }).waitFor();
       expect(await view.getByRole("button", { name: "Export a bookmarks file" }).count()).toBe(0);

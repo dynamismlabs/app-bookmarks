@@ -559,21 +559,24 @@ describe("the preview script", () => {
 });
 
 describe("backups", () => {
-  // Kit gap (docs/parity.md): the kit's portable backup copies SQLite's FTS5 shadow tables as ordinary
-  // tables, and restore then refuses them. Bookmarks' search lives in FTS5, so a backup can't be restored
-  // today. When the kit skips shadow tables and recreates virtual tables, this test fails: change it to
-  // check the restored links and their search instead.
-  it("can't be restored today, because of the full-text search table", async () => {
+  it("restores into an empty folder with the links and their search intact", async () => {
     const fs = await import("node:fs/promises");
     const os = await import("node:os");
     const path = await import("node:path");
     const { backupNode, restoreNode } = await import("@app-builder/core/node");
     const h = await harness();
-    await h.call("save_bookmark", { url: "https://example.test/kept", pageText: "backupword" });
+    const saved = await h.call("save_bookmark", { url: "https://example.test/kept", pageText: "backupword" });
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "bookmarks-backup-"));
     try {
       await backupNode(h.platform, "bookmarks", path.join(dir, "backup"));
-      await expect(restoreNode(path.join(dir, "backup"), path.join(dir, "restored"), "bookmarks")).rejects.toThrow(/reserved for internal use: bookmarks_fts/);
+      await restoreNode(path.join(dir, "backup"), path.join(dir, "restored"), "bookmarks");
+      const restored = await harness({ dataDir: path.join(dir, "restored") });
+      expect(ids(await restored.call("list_bookmarks", {}))).toEqual([saved.record.id]);
+      expect(ids(await restored.call("list_bookmarks", { query: "backupword" }))).toEqual([saved.record.id]);
+      expect((await restored.call("list_bookmarks", { query: "nothingsaved" })).items).toEqual([]);
+      // The triggers that keep search in step came back too: a link saved after the restore is found.
+      const later = await restored.call("save_bookmark", { url: "https://example.test/later", pageText: "afterword" });
+      expect(ids(await restored.call("list_bookmarks", { query: "afterword" }))).toEqual([later.record.id]);
     } finally { await fs.rm(dir, { recursive: true, force: true }); }
   });
 });

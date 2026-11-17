@@ -25,8 +25,8 @@ export class CallError extends Error {
 /** Who is calling: the person in their own browser, or an assistant connection's token. */
 export type Caller = "person" | { token: string };
 
-export async function harness(options: { now?: string } = {}) {
-  const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), "bookmarks-test-"));
+export async function harness(options: { now?: string; dataDir?: string } = {}) {
+  const dataDir = options.dataDir ?? await fs.mkdtemp(path.join(os.tmpdir(), "bookmarks-test-"));
   let now = new Date(options.now ?? "2026-10-15T12:00:00.000Z");
   clock.now = () => now;
   let current = await openNodePlatform(application, { dataDir, localOwner: true, baseURL: ORIGIN });
