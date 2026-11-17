@@ -5,7 +5,7 @@ Ri's Bookmarks app (`apps/bookmarks` at Ri commit `3c442810`) is ported here ont
 - **Works**: the same behavior, on the new path.
 - **Works differently**: the person or an assistant can still do it, in another way (says how).
 - **Can't work yet**: not possible on the new path as built (says why, and what would need to change in the kit or Ri).
-- **Verified in the test host**: checked in the kit's strict MCP Apps test host (a scripts-only sandbox that may not reach the network and behaves like Ri: it keeps view-only tools from its model, drafts `ui/message`, records links and downloads, and sends deep links). **In Ri**: then checked on November 16, 2026 in a disposable Ri at f55cdf96 on this Mac, on the web and in its desktop app, with dummy links only (not Trey's own Ri, which runs on another computer). ChatGPT and Claude are still pending. Details in [Real hosts](#real-hosts), screenshots in `docs/parity/`.
+- **Verified in the test host**: checked in the kit's strict MCP Apps test host (a scripts-only sandbox that may not reach the network and behaves like Ri: it keeps view-only tools from its model, drafts `ui/message`, records links and downloads, and sends deep links). **In Ri**: then checked on November 16, 2026 in a disposable Ri at f55cdf96 on this Mac, on the web and in its desktop app, with dummy links only (not a Ri Home in everyday use, which runs on another computer). ChatGPT and Claude are still pending. Details in [Real hosts](#real-hosts), screenshots in `docs/parity/`.
 
 First checked on November 12, 2026, against kit `bc2c7f4`, with Ri's hub as read on Ri branch `claude/single-path-ri-approval-id`. Moved onto kit `1713f6a` (core 0.2.2, the full app in every host, shared spec §5) on November 16. Ri itself wasn't run.
 
@@ -160,7 +160,7 @@ The extension is now an ordinary OAuth MCP client of Bookmarks: it registers its
 
 ## Real hosts
 
-Checked on November 16, 2026. "Ri" is a **disposable Ri at f55cdf96** on this Mac, with dummy links, not Trey's own Ri. Bookmarks ran as the installed service at `http://127.0.0.1:4314` (release 0ebde33). Ri connected it through Bookmarks' consent screen, both with Add app and with Add MCP server. **Add app connects but can't open the app** ("unknown action \"mcp.bookmarks_at_ri.open_bookmarks\""): Ri publishes the tools as `app_bookmarks.<tool>` and calls them as `mcp.<slug>.<tool>`. So the full-screen checks used Add MCP server. Screenshots: `docs/parity/ri-*.png`.
+Checked on November 16, 2026. "Ri" is a **disposable Ri at f55cdf96** on this Mac, with dummy links, not a Ri Home in everyday use. Bookmarks ran as the installed service at `http://127.0.0.1:4314` (release 0ebde33). Ri connected it through Bookmarks' consent screen, both with Add app and with Add MCP server. **Add app connects but can't open the app** ("unknown action \"mcp.bookmarks_at_ri.open_bookmarks\""): Ri publishes the tools as `app_bookmarks.<tool>` and calls them as `mcp.<slug>.<tool>`. So the full-screen checks used Add MCP server. Screenshots: `docs/parity/ri-*.png`.
 
 | Check | Ri on the web | Ri's desktop app | ChatGPT | Claude |
 | --- | --- | --- | --- | --- |
@@ -208,4 +208,4 @@ Still open:
 - Earlier, on kit `bc2c7f4`: `serve --install --service process`, `change`, an SDK client's OAuth against the running service, and the web app in a browser.
 - Hub features against the kit's fixture source and a stand-in. Not against Ri's real hub.
 - November 16: installed as this Mac's service with `PORT=4314 APP_HOST=127.0.0.1 APP_URL=http://127.0.0.1:4314 pnpm exec app-builder serve --install HEAD --json` (every step passed; launchd `local.bookmarks`, data in `~/.local/share/bookmarks`). Then the checks in [Real hosts](#real-hosts) in a disposable Ri at f55cdf96, driven with Playwright in Ri's web app and its source Electron app. The dummy links were deleted afterwards, and the disposable Ri's two connections were disconnected in Settings.
-- Not done here: Trey's own Ri, ChatGPT and Claude drawing the view, Cloudflare (FTS5, triggers and window functions on D1), and a real Cmd+D keystroke.
+- Not done here: a Ri Home in everyday use, ChatGPT and Claude drawing the view, Cloudflare (FTS5, triggers and window functions on D1), and a real Cmd+D keystroke.
