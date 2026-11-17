@@ -6,7 +6,8 @@
  * Headless automation can't answer the permission prompt, so this copy of the
  * extension is given 127.0.0.1 up front. The first test signs in for real:
  * Connect on the options page, chrome.identity's window with the app's consent
- * screen, "Only add", the token, then a saved link. The rest give the extension
+ * screen starting on "Only add" (the extension asks for add_only), the token,
+ * then a saved link. The rest give the extension
  * an add-only connection made outside the browser, the way it holds one after
  * Connect. An actual Cmd+D keystroke isn't covered: creating a bookmark through
  * the browser's API fires the same event.
@@ -105,7 +106,7 @@ run("the extension in Chromium", () => {
     await chrome.bookmarks.create({ parentId, title, url });
   }, input);
 
-  it("signs in from its options page: the person chooses Only add on the consent screen, and it saves", async () => {
+  it("signs in from its options page: it asks only to add, the consent screen starts there, and it saves", async () => {
     const page = await extensionPage("options.html");
     await page.getByLabel("Bookmarks address").fill(origin);
     // chrome.identity.launchWebAuthFlow opens the app's consent screen in a window of its own, and hands back the
@@ -122,7 +123,9 @@ run("the extension in Chromium", () => {
     const consent = await opened;
     await consent.waitForURL((url) => url.pathname === "/oauth/consent");
     await consent.getByRole("heading", { name: /^Connect Bookmarks browser extension.* to Bookmarks\?$/ }).waitFor();
-    await consent.getByLabel("Only add: Save links from a browser").check();
+    // The extension asked for add_only, so "Only add" is chosen already. The person could allow more.
+    await consent.getByText(/^Bookmarks browser extension.* asks only to add\. You can allow more\.$/).waitFor();
+    expect(await consent.getByLabel("Only add: Save links from a browser").isChecked()).toBe(true);
     await consent.getByText(/can only add, and can.t read or change anything/).waitFor();
     await consent.getByRole("button", { name: "Allow connection" }).click();
     await consent.waitForURL((url) => url.href.startsWith(redirect));

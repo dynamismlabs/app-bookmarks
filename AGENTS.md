@@ -36,7 +36,7 @@ Bookmarks is a personal app built with App Builder (core 0.2.2 from kit `023f92f
 
 ## The extension
 
-It is an OAuth MCP client of this app: it registers itself as a public client (`token_endpoint_auth_method: "none"`), opens the consent screen with `chrome.identity.launchWebAuthFlow` and PKCE S256, and calls `save_bookmarks` on `/mcp`. The kit answers its origin (`chrome-extension://<id>`) on discovery, register, token and `/mcp` only, so never give it any other route. All network calls happen in `background.js`, which refreshes tokens one at a time (the app rotates refresh tokens). It needs only "Only add". A client can't ask for that, so the options page and the Connect screen tell the person to choose it, and the extension works with more access too.
+It is an OAuth MCP client of this app: it registers itself as a public client (`token_endpoint_auth_method: "none"`), opens the consent screen with `chrome.identity.launchWebAuthFlow` and PKCE S256, and calls `save_bookmarks` on `/mcp`. The kit answers its origin (`chrome-extension://<id>`) on discovery, register, token and `/mcp` only, so never give it any other route. All network calls happen in `background.js`, which refreshes tokens one at a time (the app rotates refresh tokens). It asks for the `add_only` scope (`SCOPE` in `extension/lib.js`), so the consent screen starts on "Only add". The person may allow more, and the extension works with more access too.
 
 After any change in `extension/`, run `pnpm extension:package`. It rewrites `src/extension-package.generated.ts` (the copy `/connect` offers) and the zip in `release/`, and `tests/extension.test.ts` fails until you do. Raise the version in `extension/manifest.json` and `package.json` together.
 

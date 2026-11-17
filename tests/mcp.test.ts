@@ -45,6 +45,12 @@ describe("over MCP", () => {
     const h = await harness();
     const kept = await h.call("save_bookmark", { url: "https://harborlog.example/tide-tables", title: "My tide notes", note: "Check before sailing", tags: ["sailing"] });
     const mcp = await client(h, (await h.connect({ addOnly: true, name: "Bookmarks browser extension" })).token);
+    // It is offered only the add action, described as everyone else sees it.
+    const { tools } = await mcp.listTools();
+    expect(tools.map((tool) => tool.name)).toEqual(["save_bookmarks"]);
+    const writer = await client(h, (await h.connect()).token);
+    expect(tools[0]).toEqual((await writer.listTools()).tools.find((tool) => tool.name === "save_bookmarks"));
+    await writer.close();
     // Adding works, and a link already saved answers exactly like a new one.
     const add = (items: unknown[]) => mcp.callTool({ name: "save_bookmarks", arguments: { via: "extension", items } });
     expect((await add([{ url: "https://harborlog.example/tide-tables", title: "Tide tables", tags: ["tides"] }])).structuredContent).toEqual({ result: { saved: 1, invalid: 0 } });

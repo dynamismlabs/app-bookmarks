@@ -30,7 +30,7 @@ pnpm dev              # set APP_DATA_DIR to a disposable folder first
 
 The same page saved twice is one record. A repeat adds new tags and never overwrites a title or note you wrote.
 
-The extension signs in to Bookmarks with OAuth, like any assistant, and gets its own connection. On Bookmarks' consent screen choose **Only add**: the extension only saves links, and that connection can't read or change what you saved. Settings lists it as "Can only add", with Disconnect.
+The extension signs in to Bookmarks with OAuth, like any assistant, and gets its own connection. It asks only to add links, so Bookmarks' consent screen starts on **Only add**, and that connection can't read or change what you saved. You can allow more there. Settings lists it as "Can only add", with Disconnect.
 
 ## Reading pages
 

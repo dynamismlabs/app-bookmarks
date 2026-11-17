@@ -23,7 +23,7 @@ export async function approveInBrowser(authorizationURL: string, send: (request:
     if (url.pathname !== "/oauth/consent") continue;
     const origin = url.origin;
     const consent = await send(new Request(origin + "/api/connections/consent?consent_code=" + url.searchParams.get("consent_code"), { headers: { cookie: cookie(), origin } }));
-    const offered = await consent.json() as { client: { name: string; returnsTo: string }; sources: unknown; adds?: { name: string; title: string }[] };
+    const offered = await consent.json() as { client: { name: string; returnsTo: string }; sources: unknown; adds?: { name: string; title: string }[]; requested?: { addOnly?: boolean } };
     if (!consent.ok) throw new Error(JSON.stringify(offered));
     const answer = await send(new Request(origin + "/api/auth/oauth2/consent", {
       method: "POST", headers: { "content-type": "application/json", origin, cookie: cookie() },

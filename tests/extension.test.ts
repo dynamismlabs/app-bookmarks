@@ -196,8 +196,11 @@ describe("connecting to the real app", () => {
     const meta = await lib.discover(browser, ORIGIN);
     const clientId = await lib.register(browser, meta, REDIRECT, "Bookmarks browser extension on macOS");
     const { verifier, challenge } = await lib.pkcePair();
-    const approved = await approveInBrowser(lib.authorizeUrl(meta, clientId, REDIRECT, challenge, "s"), (request) => h.app.request(request), { write: false, addOnly: true });
-    // The consent screen offers "Only add" with the app's one add action.
+    const authorize = lib.authorizeUrl(meta, clientId, REDIRECT, challenge, "s");
+    expect(new URL(authorize).searchParams.get("scope")!.split(" ")).toContain("add_only");
+    const approved = await approveInBrowser(authorize, (request) => h.app.request(request), { write: false, addOnly: true });
+    // It asked only to add, so the consent screen starts on "Only add", with the app's one add action.
+    expect(approved.offered.requested).toEqual({ addOnly: true });
     expect(approved.offered.adds).toEqual([{ name: "save_bookmarks", title: "Save links from a browser" }]);
     const code = lib.codeFrom(approved.redirectURI, "s");
     // The token endpoint answers the extension's origin, with CORS and no credentials, and insists on the verifier.
@@ -217,7 +220,9 @@ describe("connecting to the real app", () => {
     stored = { ...stored, expiresAt: 0 };
     expect((await lib.sendItems(session, "bookmark", [{ url: "https://example.test/after-refresh" }])).outcome).toBe("ok");
     expect(stored.accessToken).not.toBe(tokens.accessToken);
-    // It can't read what was saved.
+    // It is offered only the add action, and can't read what was saved.
+    const listed = await browser(`${ORIGIN}/mcp`, { method: "POST", headers: { authorization: `Bearer ${stored.accessToken}`, "content-type": "application/json", accept: "application/json, text/event-stream" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }) });
+    expect(((await listed.json()) as { result: { tools: { name: string }[] } }).result.tools.map((tool) => tool.name)).toEqual(["save_bookmarks"]);
     expect(await session.call("list_bookmarks", {})).toMatchObject({ outcome: "rejected", message: expect.stringContaining("can only add, not read or change") });
     expect((await h.call("list_bookmarks", {})).items.map((item: { url: string }) => item.url).sort()).toEqual(["https://example.test/after-refresh", "https://example.test/from-the-browser"]);
     // Settings lists it as able only to add.
@@ -234,7 +239,8 @@ describe("connecting to the real app", () => {
     expect(withSecret.ok).toBe(false);
   });
 
-  // The rest of the flow, with the sign-in requests sent the way a server-side client sends them (no Origin).
+  // The rest of the flow, with the sign-in requests sent the way a server-side client sends them (no Origin),
+  // and the person allowing more than the extension asked for: it works the same.
   it("registers, asks on the consent screen, saves, refreshes, and is listed in Settings", async () => {
     const h = await harness();
     const fetcher = (url: string, init?: RequestInit) => h.request(url, init);

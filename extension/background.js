@@ -107,9 +107,9 @@ async function saveTab(tab) {
 
 /**
  * Connect with OAuth, the way any assistant connects: register this browser,
- * open the app's consent screen, and keep the token it gives. The person sees
- * who is asking and chooses what it may do. Only add is enough: the extension
- * calls nothing but save_bookmarks.
+ * open the app's consent screen, and keep the token it gives. It asks only to
+ * add (the extension calls nothing but save_bookmarks), and the person sees
+ * who is asking and may allow more.
  */
 async function connect(app) {
   const fetcher = (url, init) => fetch(url, init);

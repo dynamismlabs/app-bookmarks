@@ -2,8 +2,8 @@
 //
 // The extension is an ordinary MCP client of the Bookmarks app. It connects
 // with OAuth like any assistant, as a public client with PKCE: it registers
-// itself, the app's consent screen asks the person what it may do ("Only add"
-// is all it needs), and it gets its own token. Saves go to the app's /mcp
+// itself, asks only to add (the add_only scope, so the consent screen starts
+// on "Only add"; the person can allow more), and gets its own token. Saves go to the app's /mcp
 // endpoint as calls to save_bookmarks, the app's one add action. Nothing goes
 // anywhere else.
 
@@ -16,7 +16,8 @@ const LIMITS = { url: 4096, title: 2000, note: 8000, excerpt: 2000, tag: 200, ta
 export const SAVE_TOOL = 'save_bookmarks';
 export const DEFAULT_APP = 'http://127.0.0.1:4316';
 export const CLIENT_NAME = 'Bookmarks browser extension';
-const SCOPE = 'openid profile offline_access';
+/** add_only: the app's consent screen starts on "Only add". The kit accepts it without listing it in scopes_supported. */
+export const SCOPE = 'openid profile offline_access add_only';
 
 const LOOPBACK = /^(localhost|127(?:\.\d{1,3}){3}|\[::1\])$/i;
 

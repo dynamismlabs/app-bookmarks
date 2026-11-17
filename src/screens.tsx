@@ -424,7 +424,7 @@ export function ConnectScreen() {
         <ol>
           <li>{client.can.download ? <Button className="secondary" onClick={() => void getExtension()}>Download the extension</Button> : <>This assistant can’t save files. {inBrowser} to download the extension.</>}</li>
           <li>Unzip it. In Chrome, open <code>chrome://extensions</code>, turn on Developer mode and choose Load unpacked.</li>
-          <li>In the extension’s options, enter {origin ? <code>{origin}</code> : "Bookmarks’ address"} and choose Connect. Bookmarks asks you to allow it, the same way it asks any assistant. Choose Only add: the extension saves links and never reads them.</li>
+          <li>In the extension’s options, enter {origin ? <code>{origin}</code> : "Bookmarks’ address"} and choose Connect. Bookmarks asks you to allow it, the same way it asks any assistant. It asks only to add links, so it can’t read what you saved.</li>
         </ol>
         <p className="muted small">Each connected browser is listed in <Link to="/settings">Settings</Link> with what it may do, where you can disconnect it.</p>
       </section>
