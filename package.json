@@ -12,6 +12,7 @@
     "deploy": "app-builder deploy cloudflare",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:perf": "vitest run --config vitest.perf.config.ts --reporter=verbose",
     "extension:package": "tsx scripts/package-extension.ts",
     "preview": "tsx scripts/preview.ts",
     "test:browser": "app-builder build && BROWSER_TESTS=1 vitest run tests/extension.browser.test.ts tests/host-view.browser.test.ts"

@@ -4,7 +4,8 @@ Bookmarks is a personal app built with App Builder (core 0.2.2 from kit `bbbb340
 
 ## Commands
 
-- `pnpm typecheck`, `pnpm test` (vitest, disposable data, fixture hub), `pnpm build`
+- `pnpm typecheck`, `pnpm test` (vitest, disposable data, fixture hub), `pnpm build`. `pnpm test` is the kit's gate for `change`, `upgrade` and `serve --install`, which may run on a busy machine: keep wall-clock limits out of it.
+- `pnpm test:perf`: timings (a 20,000-link import, a search), apart from `pnpm test`. It prints the load average and skips the timings on a busy machine. Run it quietly before each tag.
 - `pnpm test:browser`: builds, then runs the extension and the assistant view (in the kit's strict MCP Apps test host, `tests/host/browser-host.ts`, copied from the kit) in Playwright's Chromium (needs `chromium-1223` in ~/Library/Caches/ms-playwright). Keep `tests/host/browser-host.ts` in step with the kit's `packages/core/test/browser-host.ts`.
 - `pnpm preview`: the fictional library on a disposable data directory with the fixture hub
 - `pnpm extension:package` after any change in `extension/` (see below)

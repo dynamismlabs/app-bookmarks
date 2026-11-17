@@ -55,7 +55,7 @@ Tools for the model: `list_bookmarks`, `get_bookmark`, `list_tags`, `save_bookma
 
 ## Developing
 
-See AGENTS.md. All test data is fictional. `pnpm test` runs everything but the real-browser tests. `pnpm test:browser` builds, then runs the extension and the assistant view (in the kit's strict MCP Apps test host) in Playwright's Chromium.
+See AGENTS.md. All test data is fictional. `pnpm test` runs everything but the real-browser tests and the timings (`pnpm test:perf`). `pnpm test:browser` builds, then runs the extension and the assistant view (in the kit's strict MCP Apps test host) in Playwright's Chromium.
 
 ## Commands
 

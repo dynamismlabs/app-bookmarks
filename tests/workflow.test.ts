@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { fixtureSource, jobStatus, runJobNow, SetupRequired, SourceUnavailable } from "@app-builder/core";
 import { application } from "../src/app";
+import { parseImport } from "../src/domain/parse";
 import { PAGES_PER_STEP, READ_WEB_PAGE } from "../src/services/reading";
 import { cleanup, harness, page, webReader, type Harness } from "./helpers";
 
@@ -488,22 +489,38 @@ describe("import", () => {
     const { bookmarksFor } = await import("../src/services/store");
     await expect(importsFor(bookmarksFor(platform, other)).apply({ previewId: preview.previewId, digest: preview.digest })).rejects.toThrow(/expired/);
   });
-  it("handles a large library in one apply, and exports it back", async () => {
+  // Correctness only: no wall-clock limits here, since the kit's checks run this suite on busy machines.
+  // How fast it is, `pnpm test:perf` measures (tests/import.perf.ts).
+  it("handles a large library in one apply, in batches rather than a write per link, and exports it back", async () => {
     const h = await harness();
     const rows = Array.from({ length: 20_000 }, (_, index) => `<DT><A HREF="https://site${index % 500}.example/page/${index}" ADD_DATE="${1600000000 + index}">Page ${index}</A>`);
     const preview = await upload(h, `<!DOCTYPE NETSCAPE-Bookmark-file-1><DL>${rows.join("\n")}</DL>`, 4);
     expect(preview.total).toBe(20_000);
-    const started = Date.now();
-    expect((await h.call("apply_import", { previewId: preview.previewId, digest: preview.digest })).added).toBe(20_000);
-    expect(Date.now() - started).toBeLessThan(30_000);
-    const searchStarted = Date.now();
-    expect((await h.call("list_bookmarks", { query: "Page 19999" })).items.length).toBeGreaterThan(0);
+    // Count what the apply asks of the database. This is what the time limit used to stand for.
+    const driver = h.platform.driver;
+    const asked = { transactions: 0, statements: 0, queries: 0 };
+    h.platform.driver = {
+      ...driver,
+      query: (query) => { asked.queries++; return driver.query(query); },
+      batch: (queries) => { asked.transactions++; asked.statements += queries.length; return driver.batch(queries); },
+    };
+    try {
+      expect((await h.call("apply_import", { previewId: preview.previewId, digest: preview.digest })).added).toBe(20_000);
+    } finally { h.platform.driver = driver; }
+    // New links go in 250 to a transaction (80 here), and saved ones are looked up 90 at a time, never one by one.
+    expect(asked.transactions).toBe(Math.ceil(20_000 / 250));
+    expect(asked.statements).toBe(20_000);
+    expect(asked.queries).toBeLessThan(Math.ceil(20_000 / 90) + 10);
+    expect((await h.call("list_bookmarks", { query: "Page 19999" })).items.map((item: { title: string }) => item.title)).toContain("Page 19999");
     expect((await h.call("list_bookmarks", { limit: 100 })).items[0].title).toBe("Page 19999");
-    expect(Date.now() - searchStarted).toBeLessThan(1000);
     const exported = await h.call("export_bookmarks", {});
     expect(exported).toMatchObject({ count: 20_000, truncated: false });
     expect(exported.text.startsWith("<!DOCTYPE NETSCAPE-Bookmark-file-1>")).toBe(true);
-  }, 60_000);
+    const back = parseImport(exported.text);
+    expect(back.links).toHaveLength(20_000);
+    expect(new Set(back.links.map((link) => link.url)).size).toBe(20_000);
+    expect(back.links.find((link) => link.url === "https://site499.example/page/19999")).toMatchObject({ title: "Page 19999", savedAt: new Date((1600000000 + 19999) * 1000).toISOString() });
+  }, 600_000);
 });
 
 describe("connecting", () => {
