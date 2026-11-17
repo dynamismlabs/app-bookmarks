@@ -99,7 +99,7 @@ run("the view in a strict host", () => {
       // The model never sees the person's own actions, and the host refuses its call to one.
       const modelTools = await host.modelTools();
       expect(modelTools).toEqual(expect.arrayContaining(["list_bookmarks", "save_bookmark", "show_bookmarks", "open_bookmarks"]));
-      for (const name of ["delete_bookmark", "upload_import_part", "preview_import", "apply_import", "export_bookmarks", "get_extension_package", "search_mentions"]) expect(modelTools, name).not.toContain(name);
+      for (const name of ["delete_bookmark", "upload_import_part", "preview_import", "apply_import", "export_bookmarks", "get_extension_package", "search_mentions", "read_settings", "change_settings"]) expect(modelTools, name).not.toContain(name);
       const tide = (await host.call("save_bookmark", { url: "https://harborlog.example/tide-tables", title: "Tide tables for small harbors", tags: ["sailing"], pageText: "Tide tables list the height of the water at each hour." })).structuredContent!.result.record;
       const bread = (await host.call("save_bookmark", { url: "https://breadnotes.example/sourdough", title: "Sourdough timing" })).structuredContent!.result.record;
       expect((await host.call("delete_bookmark", { id: tide.id, expectedRevision: tide.revision })).isError).toBe(true);
@@ -170,6 +170,28 @@ run("the view in a strict host", () => {
       // A host link at start opens there too.
       await host.mount("open_bookmarks", {}, { deepLink: `/bookmarks/${tide.id}` });
       await view.locator(".inspector h2").getByText("Tide tables for small harbors").waitFor();
+
+      // Settings open inside the view (the core's view-only settings tools), with each connection and what it may do.
+      await createTestConnection(app.platform, { name: "Bookmarks browser extension", addOnly: true });
+      await host.mount("open_bookmarks");
+      await view.getByLabel("Search bookmarks").waitFor();
+      const linksBefore = (await host.asked()).links.length;
+      await view.locator(".app-header").getByRole("link", { name: "Settings" }).click();
+      await view.getByRole("heading", { name: "Settings", level: 1 }).waitFor();
+      await view.locator(".connection-row").filter({ hasText: "Qualification host (this one)" }).getByText("Can read and make changes").waitFor();
+      await view.locator(".connection-row").filter({ hasText: "Bookmarks browser extension" }).getByText("Can only add").waitFor();
+      await view.getByRole("heading", { name: "Your accounts through Ri" }).waitFor();
+      await view.getByRole("heading", { name: "Automations" }).waitFor();
+      await view.getByText("Read saved pages").first().waitFor();
+      expect(await poll(host.modelContext, (text) => text.includes('"path":"/settings"'))).toContain('"section":"Settings"');
+      // The person removes the extension's connection here, without leaving the assistant.
+      await view.locator(".connection-row").filter({ hasText: "Bookmarks browser extension" }).getByRole("button", { name: "Disconnect" }).click();
+      await view.locator(".connection-row").filter({ hasText: "Bookmarks browser extension" }).waitFor({ state: "detached" });
+      expect((await (await fetch(`${origin}/api/connections`, { headers: { origin } })).json() as { name: string }[]).map((row) => row.name)).toEqual(["Qualification host"]);
+      await view.getByRole("button", { name: "← Back to Bookmarks" }).click();
+      await view.getByLabel("Search bookmarks").waitFor();
+      // None of it went through the host's open-link.
+      expect((await host.asked()).links).toHaveLength(linksBefore);
 
       // A host without drafts, links or downloads: nothing is sent, and the view offers what it can.
       const before = await host.asked();

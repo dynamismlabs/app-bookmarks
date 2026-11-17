@@ -21,7 +21,7 @@ function Header() {
   return <header className="app-header">
     <Link to="/" className="brand"><span className="brand-mark" aria-hidden="true">◆</span>{appConfig.name}</Link>
     <nav className="header-links"><Link to="/connect">Connect</Link>
-      {client.embedded ? <><OpenInBrowser path="/settings" className="text-button">Settings</OpenInBrowser><OpenInBrowser className="text-button" /></> : <Link to="/settings">Settings</Link>}</nav>
+      {client.embedded && <OpenInBrowser className="text-button" />}<Link to="/settings">Settings</Link></nav>
   </header>;
 }
 
@@ -30,15 +30,13 @@ function Header() {
 const PAGE = 50;
 
 function StateNotice({ list }: { list: BookmarkList | undefined }) {
-  const client = useAppClient();
   if (!list) return null;
   if (list.items.some((item) => item.fictional)) return <p className="notice">Fictional preview. These links and their text are examples. No page is requested.</p>;
   if (!list.setup.waiting) return null;
   if (list.setup.reading) return <p className="muted small">{plural(list.setup.waiting, "page is", "pages are")} waiting to be read. Search covers their titles and links until then.</p>;
   return <p className="notice">
     <strong>Search only covers titles and links for now.</strong> {plural(list.setup.waiting, "saved page hasn’t", "saved pages haven’t")} been read.
-    {client.embedded ? <> <OpenInBrowser path="/settings" className="text-button">Connect Bookmarks to Ri</OpenInBrowser> in its Settings and allow it to read public web pages, and search will find what they say.</>
-      : <> <Link to="/settings">Connect Bookmarks to Ri</Link> and allow it to read public web pages, and search will find what they say.</>}
+    {" "}<Link to="/settings">Connect Bookmarks to Ri</Link> and allow it to read public web pages, and search will find what they say.
   </p>;
 }
 
@@ -401,7 +399,6 @@ export function ConnectScreen() {
   // Inside an assistant, the app's own address when the person can reach it from here (not on a phone for an app on a Mac).
   const origin = client.embedded ? client.appURL : client.url.origin;
   const phone = origin ? reachableFromPhone(origin) : false;
-  const settings = client.embedded ? <OpenInBrowser path="/settings" className="text-button">Settings</OpenInBrowser> : <Link to="/settings">Settings</Link>;
   const saved = (ok: boolean, what: string) => setNotice(ok ? what : "This assistant didn’t save the file. Open Bookmarks in your browser to download it.");
   const getExtension = async () => {
     try {
@@ -427,9 +424,9 @@ export function ConnectScreen() {
         <ol>
           <li>{client.can.download ? <Button className="secondary" onClick={() => void getExtension()}>Download the extension</Button> : <>This assistant can’t save files. {inBrowser} to download the extension.</>}</li>
           <li>Unzip it. In Chrome, open <code>chrome://extensions</code>, turn on Developer mode and choose Load unpacked.</li>
-          <li>In the extension’s options, enter {origin ? <code>{origin}</code> : "Bookmarks’ address"} and choose Connect. Bookmarks asks you to allow it, the same way it asks any assistant.</li>
+          <li>In the extension’s options, enter {origin ? <code>{origin}</code> : "Bookmarks’ address"} and choose Connect. Bookmarks asks you to allow it, the same way it asks any assistant. Choose Only add: the extension saves links and never reads them.</li>
         </ol>
-        <p className="muted small">Each connected browser is listed in {settings} under Connect your assistant, where you can disconnect it.</p>
+        <p className="muted small">Each connected browser is listed in <Link to="/settings">Settings</Link> with what it may do, where you can disconnect it.</p>
       </section>
       <section>
         <h2>A bookmarklet</h2>
@@ -459,15 +456,11 @@ export function ConnectScreen() {
   </div>;
 }
 
-/** Settings use the app's own pages (connections, Ri, the reading job), so inside an assistant they open in the browser. */
+/** The kit's Settings: connections, the connection to Ri and the page-reading job. Inside an assistant it works through the core's view-only settings tools. */
 export function SettingsScreen() {
   const client = useAppClient();
   useEffect(() => client.setSection({ title: "Settings", path: "/settings" }), [client.setSection]);
-  if (!client.embedded) return <ConnectionSettings />;
-  return <div className="workspace"><Header /><main className="connect-page"><h1>Settings</h1>
-    <p>Settings hold your connections, the connection to Ri and the page-reading job. They open in your browser.</p>
-    <OpenInBrowser path="/settings" className="secondary">Open Settings in your browser</OpenInBrowser>
-  </main></div>;
+  return <ConnectionSettings />;
 }
 
 // ─── The card show_bookmarks draws in a chat ────────────────────────────────
