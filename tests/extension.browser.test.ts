@@ -4,11 +4,12 @@
  * so the ordinary test run skips it).
  *
  * Headless automation can't answer the permission prompt, so this copy of the
- * extension is given 127.0.0.1 up front. Signing in from the extension is
- * refused by the kit today (docs/parity.md), so the first test shows that, and
- * the rest give the extension a connection made outside the browser, the way
- * it would hold one after Connect. An actual Cmd+D keystroke isn't covered:
- * creating a bookmark through the browser's API fires the same event.
+ * extension is given 127.0.0.1 up front. The first test signs in for real:
+ * Connect on the options page, chrome.identity's window with the app's consent
+ * screen, "Only add", the token, then a saved link. The rest give the extension
+ * an add-only connection made outside the browser, the way it holds one after
+ * Connect. An actual Cmd+D keystroke isn't covered: creating a bookmark through
+ * the browser's API fires the same event.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import fs from "node:fs";
@@ -39,7 +40,12 @@ let extensionId: string;
 run("the extension in Chromium", () => {
   beforeAll(async () => {
     const port = 4400 + Math.floor(Math.random() * 400);
-    app = await serveApp(application, { root: path.resolve(import.meta.dirname, ".."), dataDir: temp("bookmarks-browser-data-"), port });
+    // The app's pages, the consent screen among them, render from the build, as src/node.ts serves them.
+    const root = path.resolve(import.meta.dirname, "..");
+    if (!fs.existsSync(path.join(root, "dist/server/index.js"))) throw new Error("Build first: pnpm test:browser runs app-builder build.");
+    const { createRequestHandler } = await import("react-router");
+    const render = createRequestHandler(await import(path.join(root, "dist/server/index.js")), "production");
+    app = await serveApp(application, { root, dataDir: temp("bookmarks-browser-data-"), port, render: (request, platform) => render(request, { platform }) });
     origin = `http://127.0.0.1:${port}`;
     // A page that only shows its text to someone signed in, as far as the extension can tell.
     pages = http.createServer((_request, response) => {
@@ -82,9 +88,9 @@ run("the extension in Chromium", () => {
     for (let tries = 0; tries < 100; tries++) { const value = await check(); if (done(value)) return value; await new Promise((resolve) => setTimeout(resolve, 100)); }
     return check();
   };
-  /** What the extension holds after Connect: its own connection, with a token from the app. */
+  /** What the extension holds after Connect: its own connection, allowed only to add, with a token from the app. */
   async function connected(overrides: Record<string, unknown> = {}) {
-    const { accessToken, clientId } = await createTestConnection(app.platform, { name: "Bookmarks browser extension" });
+    const { accessToken, clientId } = await createTestConnection(app.platform, { name: "Bookmarks browser extension", addOnly: true });
     const connection = { app: origin, clientId, accessToken, refreshToken: null, tokenEndpoint: `${origin}/api/auth/mcp/token`, revocationEndpoint: null, resource: origin, expiresAt: Date.now() + 3_600_000, ...overrides };
     await worker.evaluate(async (value) => { await chrome.storage.local.set({ connection: value, mirror: true }); }, connection);
     return connection;
@@ -99,11 +105,43 @@ run("the extension in Chromium", () => {
     await chrome.bookmarks.create({ parentId, title, url });
   }, input);
 
-  it("is refused when it signs in from the options page today, and says why", async () => {
+  it("signs in from its options page: the person chooses Only add on the consent screen, and it saves", async () => {
     const page = await extensionPage("options.html");
     await page.getByLabel("Bookmarks address").fill(origin);
+    // chrome.identity.launchWebAuthFlow opens the app's consent screen in a window of its own, and hands back the
+    // address the screen sends the browser to. Headless Chromium can't open that window (it fails at once with
+    // "Authorization page could not be loaded", even for a page that loads), so this one call is stood in for:
+    // the same address opens in a tab, and the test hands back where the consent screen sent it.
+    const redirect = `https://${extensionId}.chromiumapp.org/bookmarks`;
+    await context.route(redirect + "**", (route) => route.fulfill({ status: 200, contentType: "text/plain", body: "Connected." }));
+    await worker.evaluate(() => {
+      chrome.identity.launchWebAuthFlow = ({ url }: { url: string }) => new Promise((resolve) => { (globalThis as any).finishAuthFlow = resolve; void chrome.tabs.create({ url }); });
+    });
+    const opened = context.waitForEvent("page");
     await page.getByRole("button", { name: "Connect" }).click();
-    await expect(page.getByRole("alert").textContent()).resolves.toMatch(/needs an update before a browser extension can sign in/);
+    const consent = await opened;
+    await consent.waitForURL((url) => url.pathname === "/oauth/consent");
+    await consent.getByRole("heading", { name: /^Connect Bookmarks browser extension.* to Bookmarks\?$/ }).waitFor();
+    await consent.getByLabel("Only add: Save links from a browser").check();
+    await consent.getByText(/can only add, and can.t read or change anything/).waitFor();
+    await consent.getByRole("button", { name: "Allow connection" }).click();
+    await consent.waitForURL((url) => url.href.startsWith(redirect));
+    expect(new URL(consent.url()).searchParams.get("code")).toBeTruthy();
+    await worker.evaluate((url) => (globalThis as any).finishAuthFlow(url), consent.url());
+    await consent.close();
+    // The extension exchanges the code with its verifier, checks it may add, and the options page shows the connection.
+    await page.getByRole("heading", { name: "Connected" }).waitFor();
+    expect(await page.locator("#home").textContent()).toBe(origin);
+    expect(await page.getByRole("alert").filter({ hasText: /./ }).count()).toBe(0);
+    const held = await worker.evaluate(async () => (await chrome.storage.local.get("connection")).connection);
+    expect(held).toMatchObject({ app: origin, resource: origin, revocationEndpoint: null, refreshToken: expect.any(String) });
+    // The app lists it as able only to add, under the name it registered with.
+    const listed = await (await fetch(`${origin}/api/connections`, { headers: { origin } })).json() as { clientId: string; name: string; write: boolean; addOnly: boolean }[];
+    expect(listed).toEqual([expect.objectContaining({ clientId: held.clientId, name: expect.stringMatching(/^Bookmarks browser extension/), write: false, addOnly: true })]);
+    // Connect's check saved nothing, and the next bookmark is saved.
+    expect(await saved()).toEqual([]);
+    await addBookmark({ title: "Signed in", url: "https://example.test/signed-in" });
+    expect((await until(saved, (rows) => rows.length > 0)).map((row) => row.url)).toEqual(["https://example.test/signed-in"]);
     await page.close();
   });
   it("copies a bookmark to Bookmarks, with its folder as a tag", async () => {
@@ -160,23 +198,24 @@ run("the extension in Chromium", () => {
     expect(state).toMatchObject({ disconnected: true, queue: [expect.objectContaining({ url: "https://example.test/after" })] });
     expect(await worker.evaluate(() => chrome.action.getBadgeText({}))).toBe("!");
   });
-  it("can't refresh an expired token from inside the browser today, and asks to connect again", async () => {
-    // A real connection, made the way a server-side client makes one (no Origin), so the refresh token is good.
+  it("refreshes an expired token from inside the browser, and carries on", async () => {
+    // A real connection with a refresh token, approved outside the browser.
     const lib = await import("../extension/lib.js" as string);
     const { approveInBrowser } = await import("./oauth");
     const redirect = `https://${extensionId}.chromiumapp.org/bookmarks`;
     const meta = await lib.discover(fetch, origin);
     const clientId = await lib.register(fetch, meta, redirect);
     const { verifier, challenge } = await lib.pkcePair();
-    const approved = await approveInBrowser(lib.authorizeUrl(meta, clientId, redirect, challenge, "s"), (request: Request) => fetch(request));
+    const approved = await approveInBrowser(lib.authorizeUrl(meta, clientId, redirect, challenge, "s"), (request: Request) => fetch(request), { write: false, addOnly: true });
     const tokens = await lib.exchangeCode(fetch, meta, clientId, redirect, lib.codeFrom(approved.redirectURI, "s"), verifier);
     await worker.evaluate(async (value) => { await chrome.storage.local.set({ connection: value, mirror: true }); }, { ...lib.connectionFor(origin, meta, clientId, tokens), expiresAt: 0 });
     await addBookmark({ title: "Expired", url: "https://example.test/expired" });
-    const state = await until(() => worker.evaluate(async () => chrome.storage.local.get(["disconnected", "lastError"])), (value: { disconnected?: boolean }) => !!value.disconnected);
-    expect(state).toMatchObject({ disconnected: true, lastError: "Connect this browser to Bookmarks again" });
-    // The same refresh token still works from outside the browser: the refusal was the origin check, not the token.
-    const refreshed = await fetch(meta.tokenEndpoint, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ grant_type: "refresh_token", client_id: clientId, refresh_token: tokens.refreshToken, resource: meta.resource }) });
-    expect(refreshed.status).toBe(200);
+    expect((await until(saved, (rows) => rows.length > 0)).map((row) => row.url)).toEqual(["https://example.test/expired"]);
+    const state = await worker.evaluate(async () => chrome.storage.local.get(["connection", "disconnected"]));
+    expect(state.disconnected).toBeFalsy();
+    expect(state.connection.expiresAt).toBeGreaterThan(Date.now());
+    // The app rotated the refresh token, and the extension kept the new one.
+    expect(state.connection.refreshToken).not.toBe(tokens.refreshToken);
   });
   it("imports every bookmark in batches, with folders as tags, and can repeat", async () => {
     await connected({});

@@ -108,7 +108,8 @@ async function saveTab(tab) {
 /**
  * Connect with OAuth, the way any assistant connects: register this browser,
  * open the app's consent screen, and keep the token it gives. The person sees
- * who is asking and allows adding links.
+ * who is asking and chooses what it may do. Only add is enough: the extension
+ * calls nothing but save_bookmarks.
  */
 async function connect(app) {
   const fetcher = (url, init) => fetch(url, init);
@@ -127,7 +128,7 @@ async function connect(app) {
   const check = await session.call(SAVE_TOOL, { via: 'extension', items: [{ url: 'about:blank' }] });
   if (check.outcome === 'disconnected') {
     await serial(() => chrome.storage.local.remove(['connection']));
-    throw new Error('Bookmarks connected this browser to read only. Connect again and allow it to add and change records.');
+    throw new Error('Bookmarks connected this browser to read only. Connect again and choose Only add.');
   }
   await showState('ok');
   void flush();

@@ -185,21 +185,53 @@ describe("calling the app", () => {
 });
 
 describe("connecting to the real app", () => {
-  // Kit gap (docs/parity.md): Chrome sends Origin: chrome-extension://<id> on the extension's sign-in requests,
-  // and the kit refuses any other origin except on /mcp with a token. When the kit lets OAuth's client endpoints
-  // through, this test fails: delete it, and the extension's Connect works as the tests below show.
-  it("is refused today when it signs in from inside the browser, and says so", async () => {
+  // As measured in Chromium: the extension's GETs arrive without an Origin, its POSTs with one.
+  const EXTENSION_ORIGIN = "chrome-extension://abcdefghijklmnopabcdefghijklmnop";
+  const fromExtension = (h: Awaited<ReturnType<typeof harness>>) => (url: string, init: RequestInit = {}) =>
+    h.request(url, init.method === "POST" ? { ...init, headers: { ...(init.headers as Record<string, string>), origin: EXTENSION_ORIGIN } } : init);
+
+  it("signs in from inside the browser as a public client with PKCE, allowed only to add, and saves", async () => {
     const h = await harness();
-    // As measured in Chromium: the extension's GETs arrive without an Origin, its POSTs with one.
-    const browser = (url: string, init: RequestInit = {}) => h.request(url, init.method === "POST" ? { ...init, headers: { ...(init.headers as Record<string, string>), origin: "chrome-extension://abcdefghijklmnopabcdefghijklmnop" } } : init);
+    const browser = fromExtension(h);
     const meta = await lib.discover(browser, ORIGIN);
-    await expect(lib.register(browser, meta, REDIRECT)).rejects.toThrow(/needs an update before a browser extension can sign in/);
-    const token = await browser(meta.tokenEndpoint, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: "grant_type=refresh_token&client_id=x&refresh_token=y" });
-    expect(token.status).toBe(403);
-    // Calls with a token are allowed from any origin, so saving works once the extension has one.
-    const { token: accessToken } = await h.connect({ name: "Bookmarks browser extension" });
-    const session = lib.createSession({ fetcher: browser, load: async () => ({ app: ORIGIN, accessToken, refreshToken: null, clientId: "c", tokenEndpoint: meta.tokenEndpoint, resource: ORIGIN, expiresAt: Date.now() + 3_600_000 }), save: async () => undefined });
-    expect((await lib.sendItems(session, "extension", [{ url: "https://example.test/from-the-browser" }])).outcome).toBe("ok");
+    const clientId = await lib.register(browser, meta, REDIRECT, "Bookmarks browser extension on macOS");
+    const { verifier, challenge } = await lib.pkcePair();
+    const approved = await approveInBrowser(lib.authorizeUrl(meta, clientId, REDIRECT, challenge, "s"), (request) => h.app.request(request), { write: false, addOnly: true });
+    // The consent screen offers "Only add" with the app's one add action.
+    expect(approved.offered.adds).toEqual([{ name: "save_bookmarks", title: "Save links from a browser" }]);
+    const code = lib.codeFrom(approved.redirectURI, "s");
+    // The token endpoint answers the extension's origin, with CORS and no credentials, and insists on the verifier.
+    const wrong = await browser(meta.tokenEndpoint, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ grant_type: "authorization_code", client_id: clientId, redirect_uri: REDIRECT, code, code_verifier: "not-the-verifier", resource: meta.resource }).toString() });
+    expect(wrong.ok).toBe(false);
+    expect(wrong.headers.get("access-control-allow-origin")).toBe("*");
+    expect(wrong.headers.get("access-control-allow-credentials")).toBeNull();
+    const second = await approveInBrowser(lib.authorizeUrl(meta, clientId, REDIRECT, challenge, "t"), (request) => h.app.request(request), { write: false, addOnly: true });
+    const tokens = await lib.exchangeCode(browser, meta, clientId, REDIRECT, lib.codeFrom(second.redirectURI, "t"), verifier);
+    expect(tokens.refreshToken).toBeTruthy();
+    let stored = lib.connectionFor(ORIGIN, meta, clientId, tokens);
+    const session = lib.createSession({ fetcher: browser, load: async () => stored, save: async (next: typeof stored) => { stored = next; } });
+    // Connect's check passes, and links save.
+    expect(await session.call(lib.SAVE_TOOL, { via: "extension", items: [{ url: "about:blank" }] })).toEqual({ outcome: "ok", body: { saved: 0, invalid: 1 } });
+    expect(await lib.sendItems(session, "extension", [{ url: "https://example.test/from-the-browser", title: "From the browser" }])).toMatchObject({ outcome: "ok", done: 1, dropped: 0 });
+    // It refreshes from inside the browser too, and carries on.
+    stored = { ...stored, expiresAt: 0 };
+    expect((await lib.sendItems(session, "bookmark", [{ url: "https://example.test/after-refresh" }])).outcome).toBe("ok");
+    expect(stored.accessToken).not.toBe(tokens.accessToken);
+    // It can't read what was saved.
+    expect(await session.call("list_bookmarks", {})).toMatchObject({ outcome: "rejected", message: expect.stringContaining("can only add, not read or change") });
+    expect((await h.call("list_bookmarks", {})).items.map((item: { url: string }) => item.url).sort()).toEqual(["https://example.test/after-refresh", "https://example.test/from-the-browser"]);
+    // Settings lists it as able only to add.
+    const settings = await (await h.request("/api/connections", { headers: { origin: ORIGIN } })).json() as { name: string; write: boolean; addOnly: boolean }[];
+    expect(settings).toEqual([expect.objectContaining({ name: "Bookmarks browser extension on macOS", write: false, addOnly: true })]);
+  });
+  it("registers only as a public client from inside the browser", async () => {
+    const h = await harness();
+    const meta = await lib.discover(fromExtension(h), ORIGIN);
+    const withSecret = await fromExtension(h)(meta.registrationEndpoint, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ client_name: "Bookmarks browser extension", redirect_uris: [REDIRECT], token_endpoint_auth_method: "client_secret_post", grant_types: ["authorization_code", "refresh_token"], response_types: ["code"] }),
+    });
+    expect(withSecret.ok).toBe(false);
   });
 
   // The rest of the flow, with the sign-in requests sent the way a server-side client sends them (no Origin).
@@ -245,6 +277,8 @@ describe("connecting to the real app", () => {
     const tokens = await lib.exchangeCode(fetcher, meta, clientId, REDIRECT, lib.codeFrom(approved.redirectURI, "s"), verifier);
     const session = lib.createSession({ fetcher, load: async () => lib.connectionFor(ORIGIN, meta, clientId, tokens), save: async () => undefined });
     expect(await session.call(lib.SAVE_TOOL, { via: "extension", items: [{ url: "about:blank" }] })).toMatchObject({ outcome: "disconnected", message: expect.stringContaining("can read but not make changes") });
+    // The extension's own words for it (background.js) point to the choice it needs.
+    expect(fs.readFileSync(path.join(extension, "background.js"), "utf8")).toContain("Connect again and choose Only add.");
   });
   it("stops working once the person disconnects it in Settings", async () => {
     const h = await harness();

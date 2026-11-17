@@ -1,9 +1,10 @@
 // Logic with no browser in it, so it can be tested on its own.
 //
 // The extension is an ordinary MCP client of the Bookmarks app. It connects
-// with OAuth like any assistant: it registers itself, the app's consent screen
-// asks the person whether it may add links, and it gets its own token. Saves
-// go to the app's /mcp endpoint as calls to save_bookmarks. Nothing goes
+// with OAuth like any assistant, as a public client with PKCE: it registers
+// itself, the app's consent screen asks the person what it may do ("Only add"
+// is all it needs), and it gets its own token. Saves go to the app's /mcp
+// endpoint as calls to save_bookmarks, the app's one add action. Nothing goes
 // anywhere else.
 
 export const MAX_PAGE_CHARS = 200_000;
@@ -138,8 +139,8 @@ export async function register(fetcher, meta, redirectUri, name = CLIENT_NAME) {
     body: JSON.stringify({ client_name: name, redirect_uris: [redirectUri], token_endpoint_auth_method: 'none', grant_types: ['authorization_code', 'refresh_token'], response_types: ['code'], software_id: 'bookmarks-extension' }),
   });
   const body = await json(response);
-  // Bookmarks' kit refuses sign-in requests from another origin, and Chrome marks this one as the extension's (docs/parity.md).
-  if (response.status === 403) throw new Error('Bookmarks didn\'t accept a connection from this extension. Its server needs an update before a browser extension can sign in.');
+  // Chrome marks these requests with the extension's origin. A Bookmarks on a kit before 023f92f refused any other origin.
+  if (response.status === 403) throw new Error('Bookmarks didn\'t accept a connection from this extension. Update Bookmarks, then connect again.');
   if (!response.ok || !body?.client_id) throw new Error('Bookmarks refused to register this browser. Try again.');
   return body.client_id;
 }
@@ -209,7 +210,7 @@ export async function callTool(fetcher, connection, name, args) {
   const result = body.result ?? {};
   if (result.isError) {
     const message = result.content?.find((part) => part.type === 'text')?.text ?? 'Bookmarks refused this request';
-    // A connection allowed only to read can't add links: the person has to connect again and allow changes.
+    // A connection allowed only to read can't add links: the person has to connect again and allow adding.
     if (/can read but not make changes|unavailable/i.test(message)) return { outcome: 'disconnected', message };
     return { outcome: 'rejected', message };
   }

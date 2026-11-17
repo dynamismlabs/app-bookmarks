@@ -69,8 +69,8 @@ export async function harness(options: { now?: string; dataDir?: string } = {}) 
       return ((await response.json()) as { result: { tools: { name: string; description: string; annotations: Record<string, boolean>; outputSchema?: unknown; _meta?: Record<string, unknown> }[] } }).result.tools;
     },
     /** An assistant connection, as if the person had allowed it on the consent screen. */
-    connect: (access: { write?: boolean; name?: string; userId?: string } = {}) =>
-      createTestConnection(current.platform, { name: access.name ?? "Test assistant", write: access.write ?? true, userId: access.userId }).then(({ accessToken, clientId }) => ({ token: accessToken, clientId })),
+    connect: (access: { write?: boolean; addOnly?: boolean; name?: string; userId?: string } = {}) =>
+      createTestConnection(current.platform, { name: access.name ?? "Test assistant", write: access.write ?? true, addOnly: access.addOnly, userId: access.userId }).then(({ accessToken, clientId }) => ({ token: accessToken, clientId })),
     /** Another person with an account on this installation. */
     async addPerson(id: string) {
       const time = new Date();

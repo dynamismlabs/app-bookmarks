@@ -12,7 +12,8 @@ describe("contract", () => {
     const shown = (item: { _meta?: { ui?: { visibility?: string[] } } }) => (item._meta?.ui?.visibility ?? ["model", "app"]).includes("model");
     expect(contract.mcp.tools.filter(shown).map((item: { name: string }) => item.name).sort()).toEqual(["get_bookmark", "list_bookmarks", "list_tags", "open_bookmarks", "save_bookmark", "save_bookmarks", "show_bookmarks", "update_bookmark"]);
     const viewOnly = contract.mcp.tools.filter((item: { _meta?: unknown }) => !shown(item as never));
-    expect(viewOnly.map((item: { name: string }) => item.name).sort()).toEqual(["apply_import", "delete_bookmark", "export_bookmarks", "get_extension_package", "preview_import", "search_mentions", "upload_import_part"]);
+    // The core adds search_mentions (the @ menu) and read_settings and change_settings (Settings inside the view).
+    expect(viewOnly.map((item: { name: string }) => item.name).sort()).toEqual(["apply_import", "change_settings", "delete_bookmark", "export_bookmarks", "get_extension_package", "preview_import", "read_settings", "search_mentions", "upload_import_part"]);
     for (const item of viewOnly) expect(item._meta, item.name).toMatchObject({ ui: { visibility: ["app"] }, "openai/visibility": "private" });
     expect(tool("show_bookmarks")._meta.ui.resourceUri).toBe("ui://bookmarks/main");
     expect(tool("open_bookmarks")._meta["openai/ui"].entrypoints).toEqual([{ type: "global" }]);
@@ -36,6 +37,10 @@ describe("contract", () => {
   it("tells the extension's save nothing about what is already saved", () => {
     const output = JSON.stringify(action("save_bookmarks").outputSchema);
     for (const field of ["title", "url", "note", "tags", "items", "record"]) expect(output, field).not.toContain(`"${field}"`);
+  });
+  it("offers only the extension's save to a connection that may only add", () => {
+    // save_bookmark answers with the merged record, so marking it would let an add-only connection read any saved link by saving it again.
+    expect(contract.actions.filter((item) => item.adds).map((item) => item.name)).toEqual(["save_bookmarks"]);
   });
   it("follows the hosts' naming rules", () => {
     for (const item of contract.mcp.tools) {

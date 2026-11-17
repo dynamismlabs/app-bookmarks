@@ -202,8 +202,9 @@ export const application: Application = {
     }),
     defineAction({
       name: "save_bookmarks", title: "Save links from a browser",
-      description: "The browser extension's save: up to 100 links at once, from a bookmark or the toolbar button. A repeat merges into the same record. Says how many were saved and how many were not web links, and nothing about what is already saved. In a chat, use save_bookmark.",
-      input: s.batchInput, output: s.batchOutput, effect: "write", retry: "safe", audience: both,
+      description: "The browser extension's save: up to 100 links at once, from a bookmark or the toolbar button. A repeat merges into the same record. Says how many were saved and how many were not web links, and nothing about what is already saved, so a connection allowed only to add may use it. In a chat, use save_bookmark, unless this connection may only add.",
+      // The one add action: it answers only counts, so the consent screen can offer the extension "Only add".
+      input: s.batchInput, output: s.batchOutput, effect: "write", retry: "safe", audience: both, adds: true,
       handler: async (ctx, input) => {
         const t = mine(ctx);
         const outcomes = await t.saveMany(input.items, input.via);
