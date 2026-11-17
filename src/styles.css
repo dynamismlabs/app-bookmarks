@@ -135,3 +135,12 @@ html[data-view="card"] .row-meta, html[data-view="card"] .row-passage { color: v
   .search-row { flex-wrap: wrap; } .search { flex-basis: 100%; }
   .library-footer { font-size: 9px; gap: 15px; } .dialog { padding: 30px 22px; }
 }
+/* Ways out of an assistant's frame (core ExternalLink, AskInChat, OpenInBrowser). */
+.external-link-address { display: block; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; user-select: all; }
+.ask-in-chat summary { cursor: pointer; color: var(--accent); font-size: 12px; }
+.ask-in-chat p, .ask-in-chat [role="status"] { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
+.inspector-out { display: flex; gap: 6px 14px; flex-wrap: wrap; align-items: center; margin-top: 14px; }
+.inspector-out .text-button { padding-left: 0; }
+.header-links .text-button { padding: 0; font-size: 13px; color: #677367; }
+.view-row-title { display: flex; align-items: baseline; gap: 8px; }
+.view-row-open { padding: 0 4px; font-size: 12px; }

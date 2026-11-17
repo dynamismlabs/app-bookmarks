@@ -1,1 +1,1 @@
-export { ConnectionSettings as default } from "@app-builder/core/react";
+export { SettingsScreen as default } from "../screens";

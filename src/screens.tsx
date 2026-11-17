@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, Route, Routes, useLocation, useNavigate } from "react-router";
-import { Button, ConnectionSettings, ConsentScreen, Form, Modal, ViewCard, useAction, useAppClient } from "@app-builder/core/react";
+import { AskInChat, Button, ConnectionSettings, ConsentScreen, ExternalLink, Form, Modal, OpenInBrowser, ViewCard, useAction, useAppClient } from "@app-builder/core/react";
 import { appConfig } from "../app.config";
 import { bookmarkletFor, reachableFromPhone, shortcutPrefix } from "./domain/client";
 import type { BookmarkDetail, BookmarkList, BookmarkRecord, ImportPreview, ImportResult, ShowData, TagList, UpdateResult } from "./schemas";
-import { copyText, download, errorMessage, fromBase64, initialOf, parseTags, plural, readSelectedFile, savedLabel, splitParts, VIA_LABELS } from "./view-util";
+import { errorMessage, fromBase64, initialOf, parseTags, plural, readSelectedFile, savedLabel, splitParts, VIA_LABELS } from "./view-util";
 
 // ─── Shared pieces ──────────────────────────────────────────────────────────
 
@@ -16,21 +16,12 @@ function Marked({ text, query }: { text: string; query: string }) {
   return <>{text.split(pattern).map((part, index) => (index % 2 ? <mark key={index}>{part}</mark> : part))}</>;
 }
 
-/** A link that opens in the person's browser. Inside an assistant's sandboxed view nothing opens, so it offers a copy. */
-function OpenLink({ url, children, className }: { url: string; children: React.ReactNode; className?: string }) {
-  const client = useAppClient();
-  const [copied, setCopied] = useState("");
-  if (!client.embedded) return <a className={className} href={url} target="_blank" rel="noopener noreferrer">{children}</a>;
-  return <button type="button" className={className ? `${className} as-link` : "as-link"} title="Copy link" onClick={async () => setCopied(await copyText(url) ? "Link copied" : "Copy the link above")}>
-    {children}{copied && <span className="copied" role="status"> · {copied}</span>}
-  </button>;
-}
-
 function Header() {
   const client = useAppClient();
   return <header className="app-header">
     <Link to="/" className="brand"><span className="brand-mark" aria-hidden="true">◆</span>{appConfig.name}</Link>
-    {!client.embedded && <nav className="header-links"><Link to="/connect">Connect</Link><Link to="/settings">Settings</Link></nav>}
+    <nav className="header-links"><Link to="/connect">Connect</Link>
+      {client.embedded ? <><OpenInBrowser path="/settings" className="text-button">Settings</OpenInBrowser><OpenInBrowser className="text-button" /></> : <Link to="/settings">Settings</Link>}</nav>
   </header>;
 }
 
@@ -46,7 +37,7 @@ function StateNotice({ list }: { list: BookmarkList | undefined }) {
   if (list.setup.reading) return <p className="muted small">{plural(list.setup.waiting, "page is", "pages are")} waiting to be read. Search covers their titles and links until then.</p>;
   return <p className="notice">
     <strong>Search only covers titles and links for now.</strong> {plural(list.setup.waiting, "saved page hasn’t", "saved pages haven’t")} been read.
-    {client.embedded ? " Connect Bookmarks to Ri in its Settings and allow it to read public web pages, and search will find what they say."
+    {client.embedded ? <> <OpenInBrowser path="/settings" className="text-button">Connect Bookmarks to Ri</OpenInBrowser> in its Settings and allow it to read public web pages, and search will find what they say.</>
       : <> <Link to="/settings">Connect Bookmarks to Ri</Link> and allow it to read public web pages, and search will find what they say.</>}
   </p>;
 }
@@ -82,6 +73,14 @@ export function Library() {
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (debounce.current) clearTimeout(debounce.current); }, []);
   useEffect(() => () => client.select(null), [client.select]);
+  // A host link or open_bookmarks can change the search; show what it asked for.
+  useEffect(() => { if (query !== typed.trim()) setTyped(query); }, [query]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Where the person is, for the assistant and for Open in browser.
+  useEffect(() => client.setSection({
+    title: query ? "Search" : tag ? `Tagged ${tag}` : "All bookmarks",
+    path: `${selectedId ? `/bookmarks/${encodeURIComponent(selectedId)}` : "/"}${location.search}`,
+    filters: { ...(query ? { Search: query } : {}), ...(tag ? { Tag: tag } : {}) },
+  }), [client.setSection, query, tag, selectedId, location.search]);
   const go = (next: { q?: string; tag?: string; id?: string | null }) => {
     const search = new URLSearchParams();
     const q = next.q ?? query, t = next.tag ?? tag;
@@ -115,8 +114,9 @@ export function Library() {
         <div className="search-row">
           <input className="search" type="search" placeholder="Search what you saved" aria-label="Search bookmarks" value={typed} onChange={(event) => onType(event.target.value)} />
           <Button className="primary" onClick={() => setAdding(true)}>Add a link</Button>
-          {!client.embedded && <Button className="secondary" onClick={() => setImporting(true)}>Import</Button>}
+          <Button className="secondary" onClick={() => setImporting(true)}>Import</Button>
         </div>
+        {!!list.data?.setup.total && <AskInChat question="Search my bookmarks for" title="Search my bookmarks">Ask about my bookmarks</AskInChat>}
         {!!tags.data?.items.length && <div className="tags" aria-label="Tags">
           {tag && <button type="button" className="chip active" onClick={() => go({ tag: "", id: null })}>All</button>}
           {tags.data.items.slice(0, 24).map((item) => <button type="button" key={item.tag} className={item.tag === tag ? "chip active" : "chip"} aria-pressed={item.tag === tag} onClick={() => go({ tag: item.tag === tag ? "" : item.tag, id: null })}>{item.tag}<span>{item.count}</span></button>)}
@@ -157,7 +157,9 @@ function Inspector({ id, query, onClose, onChanged }: { id: string; query: strin
     if (!detail.data) return;
     setRecord(detail.data.bookmark);
     setFields((current) => current ?? { title: detail.data!.bookmark.title, note: detail.data!.bookmark.note ?? "", tags: detail.data!.bookmark.tags.join(", ") });
-  }, [detail.data]);
+    // Opened from a host link or open_bookmarks as well as by a click: the assistant knows which link it is.
+    client.select({ id: detail.data.bookmark.id, title: detail.data.bookmark.title });
+  }, [detail.data]); // eslint-disable-line react-hooks/exhaustive-deps
   if (detail.error) return <aside className="inspector"><button className="close" aria-label="Close" onClick={onClose}>×</button><p role="alert" className="error">{detail.error}</p></aside>;
   if (!record || !fields) return <aside className="inspector"><p className="empty">Opening…</p></aside>;
   const save = async () => {
@@ -184,6 +186,7 @@ function Inspector({ id, query, onClose, onChanged }: { id: string; query: strin
       const result = await client.call<{ status: "deleted" } | { status: "conflict"; current: BookmarkRecord; message: string }>("delete_bookmark", { id: record.id, expectedRevision: record.revision });
       if (result.status === "conflict") { setRecord(result.current); setDeleting(false); setNotice(`${result.message}. Look it over, then delete it again if you still want to.`); return; }
       setDeleting(false);
+      client.didChange(`Deleted “${record.title}”`);
       onClose();
       await onChanged();
     } catch (error) { setNotice(errorMessage(error)); } finally { setBusy(false); }
@@ -192,7 +195,7 @@ function Inspector({ id, query, onClose, onChanged }: { id: string; query: strin
   return <aside className="inspector" aria-label={record.title}>
     <button className="close" aria-label="Close" onClick={onClose}>×</button>
     <p className="eyebrow">{record.site} · {VIA_LABELS[record.via] ?? "Saved"} {savedLabel(record.savedAt)}</p>
-    <h2><OpenLink url={record.url}>{record.title}</OpenLink></h2>
+    <h2><ExternalLink href={record.url}>{record.title}</ExternalLink></h2>
     <p className="url">{record.url}</p>
     <p className={record.page.state === "read" ? "muted small" : "page-state"}>{record.page.label}{record.page.state === "read" && record.page.chars ? `, ${plural(record.page.chars, "character", "characters")}${record.page.source === "browser" ? " from your browser" : ""}` : ""}</p>
     <Form onSubmit={() => save()}>
@@ -201,9 +204,12 @@ function Inspector({ id, query, onClose, onChanged }: { id: string; query: strin
       <label>Note<textarea rows={4} maxLength={4000} value={fields.note} onChange={(event) => setFields({ ...fields, note: event.target.value })} /></label>
       {notice && <p role="status" className="small">{notice}</p>}
       <div className="actions"><Button className="primary" disabled={busy}>{busy ? "Saving…" : "Save"}</Button>
-        {!client.embedded && <Button type="button" className="danger" onClick={() => setDeleting(true)} disabled={busy}>Delete</Button>}</div>
+        <Button type="button" className="danger" onClick={() => setDeleting(true)} disabled={busy}>Delete</Button></div>
     </Form>
-    {client.embedded && <p className="muted small">To delete a link, open Bookmarks itself. Assistants can save and change links but never delete them.</p>}
+    <div className="inspector-out">
+      <AskInChat question={`Using my bookmark “${record.title.slice(0, 120)}”,`} title={record.title.slice(0, 80)}>Ask about this link</AskInChat>
+      <OpenInBrowser path={`/bookmarks/${record.id}`} />
+    </div>
     {text && <section className="page-text">
       <button type="button" className="text-button" aria-expanded={showText} onClick={() => setShowText(!showText)}>{showText ? "Hide what the page said" : "What the page said"}</button>
       {showText && <><p className="muted small">Saved from the web. Reference only.</p><div className="page-body"><Marked text={text.slice(0, 6000)} query={query} />{text.length > 6000 ? "…" : ""}</div></>}
@@ -391,23 +397,25 @@ export function ConnectScreen() {
   const client = useAppClient();
   const [notice, setNotice] = useState("");
   const [importing, setImporting] = useState(false);
-  const origin = client.url.origin;
-  if (client.embedded) return <div className="workspace"><Header /><main className="connect-page"><h1>Connect a browser or phone</h1><p>Open Bookmarks in your browser at {origin} to connect the extension, the bookmarklet or an iPhone Shortcut.</p></main></div>;
-  const phone = reachableFromPhone(origin);
+  useEffect(() => client.setSection({ title: "Connect", path: "/connect" }), [client.setSection]);
+  // Inside an assistant, the app's own address when the person can reach it from here (not on a phone for an app on a Mac).
+  const origin = client.embedded ? client.appURL : client.url.origin;
+  const phone = origin ? reachableFromPhone(origin) : false;
+  const settings = client.embedded ? <OpenInBrowser path="/settings" className="text-button">Settings</OpenInBrowser> : <Link to="/settings">Settings</Link>;
+  const saved = (ok: boolean, what: string) => setNotice(ok ? what : "This assistant didn’t save the file. Open Bookmarks in your browser to download it.");
   const getExtension = async () => {
     try {
       const pkg = await client.call<{ fileName: string; version: string; base64: string }>("get_extension_package");
-      download(pkg.fileName, fromBase64(pkg.base64), "application/zip");
-      setNotice(`Downloaded version ${pkg.version}.`);
+      saved(await client.download({ name: pkg.fileName, mimeType: "application/zip", data: fromBase64(pkg.base64) }), `Saved version ${pkg.version}.`);
     } catch (error) { setNotice(errorMessage(error)); }
   };
   const exportFile = async () => {
     try {
       const file = await client.call<{ fileName: string; text: string; count: number; truncated: boolean }>("export_bookmarks");
-      download(file.fileName, file.text, "text/html");
-      setNotice(`Exported ${plural(file.count, "link", "links")}.${file.truncated ? " The file reached its size limit, so the oldest links are left out." : ""}`);
+      saved(await client.download({ name: file.fileName, mimeType: "text/html", text: file.text }), `Exported ${plural(file.count, "link", "links")}.${file.truncated ? " The file reached its size limit, so the oldest links are left out." : ""}`);
     } catch (error) { setNotice(errorMessage(error)); }
   };
+  const inBrowser = <OpenInBrowser path="/connect" className="text-button">Open this page in your browser</OpenInBrowser>;
   return <div className="workspace"><Header />
     <main className="connect-page">
       <h1>Save from anywhere</h1>
@@ -417,36 +425,49 @@ export function ConnectScreen() {
         <h2>Your browser</h2>
         <p>The extension copies the bookmarks you make (Cmd+D) and saves the page you are reading with the text you can see, including behind a login. It can also bring in every bookmark already in the browser, with folders as tags.</p>
         <ol>
-          <li><Button className="secondary" onClick={() => void getExtension()}>Download the extension</Button></li>
+          <li>{client.can.download ? <Button className="secondary" onClick={() => void getExtension()}>Download the extension</Button> : <>This assistant can’t save files. {inBrowser} to download the extension.</>}</li>
           <li>Unzip it. In Chrome, open <code>chrome://extensions</code>, turn on Developer mode and choose Load unpacked.</li>
-          <li>In the extension’s options, enter <code>{origin}</code> and choose Connect. Bookmarks asks you here to allow it, the same way it asks any assistant.</li>
+          <li>In the extension’s options, enter {origin ? <code>{origin}</code> : "Bookmarks’ address"} and choose Connect. Bookmarks asks you to allow it, the same way it asks any assistant.</li>
         </ol>
-        <p className="muted small">Each connected browser is listed in <Link to="/settings">Settings</Link> under Connect your assistant, where you can disconnect it.</p>
+        <p className="muted small">Each connected browser is listed in {settings} under Connect your assistant, where you can disconnect it.</p>
       </section>
       <section>
         <h2>A bookmarklet</h2>
-        <p>Drag this to your bookmarks bar. It opens a small window that saves the page, using this app’s own sign-in. It holds no key.</p>
-        <Bookmarklet code={bookmarkletFor(origin)} />
+        <p>It opens a small window that saves the page, using this app’s own sign-in. It holds no key.</p>
+        {client.embedded ? <p>Drag it to your bookmarks bar from Bookmarks in your browser. {inBrowser}</p>
+          : origin && <><p>Drag this to your bookmarks bar.</p><Bookmarklet code={bookmarkletFor(origin)} /></>}
       </section>
       <section>
         <h2>Your iPhone</h2>
-        {phone ? <>
+        {origin && phone ? <>
           <p>Make a Shortcut that appears in the share sheet:</p>
           <ol>
             <li>In Shortcuts, add <em>Receive URLs from Share Sheet</em>.</li>
             <li>Add <em>URL</em> with <code>{shortcutPrefix(origin)}</code> followed by <em>Shortcut Input</em> (URL-encoded).</li>
             <li>Add <em>Open URLs</em>. Safari opens the save page, where you’re already signed in.</li>
           </ol>
-        </> : <p>Your phone can’t reach Bookmarks at <code>{origin}</code>, which is this computer’s own address. To save from your phone, run Bookmarks at an address the phone can reach, with sign-in on (its README covers Cloudflare and a private network). Then this section shows the Shortcut.</p>}
+        </> : <p>Your phone can’t reach Bookmarks{origin ? <> at <code>{origin}</code>, which is this computer’s own address</> : " from here"}. To save from your phone, run Bookmarks at an address the phone can reach, with sign-in on (its README covers Cloudflare and a private network). Then this section shows the Shortcut.</p>}
       </section>
       <section>
         <h2>Bring in and take out</h2>
         <p>Import a browser export, a Raindrop export, a CSV with a url column, or pasted links. Export makes a bookmarks file any browser or bookmark service can read.</p>
-        <div className="actions"><Button className="secondary" onClick={() => setImporting(true)}>Import</Button><Button className="secondary" onClick={() => void exportFile()}>Export a bookmarks file</Button></div>
+        <div className="actions"><Button className="secondary" onClick={() => setImporting(true)}>Import</Button>
+          {client.can.download ? <Button className="secondary" onClick={() => void exportFile()}>Export a bookmarks file</Button> : <span className="muted small">This assistant can’t save files. {inBrowser} to export.</span>}</div>
       </section>
     </main>
     {importing && <ImportDialog onClose={() => setImporting(false)} onApplied={() => setNotice("Imported.")} />}
   </div>;
+}
+
+/** Settings use the app's own pages (connections, Ri, the reading job), so inside an assistant they open in the browser. */
+export function SettingsScreen() {
+  const client = useAppClient();
+  useEffect(() => client.setSection({ title: "Settings", path: "/settings" }), [client.setSection]);
+  if (!client.embedded) return <ConnectionSettings />;
+  return <div className="workspace"><Header /><main className="connect-page"><h1>Settings</h1>
+    <p>Settings hold your connections, the connection to Ri and the page-reading job. They open in your browser.</p>
+    <OpenInBrowser path="/settings" className="secondary">Open Settings in your browser</OpenInBrowser>
+  </main></div>;
 }
 
 // ─── The card show_bookmarks draws in a chat ────────────────────────────────
@@ -464,7 +485,8 @@ export function BookmarksCard({ data }: { data: ShowData }) {
     {items.length ? <ul className="view-list">{items.map((item) => <li key={item.id} className="view-row">
       <span className="initial small" aria-hidden="true">{initialOf(item.site)}</span>
       <div className="view-row-body">
-        <button type="button" className="as-link" onClick={() => { const next = open === item.id ? null : item.id; setOpen(next); client.select(next ? { id: item.id, title: item.title } : null); }}><strong><Marked text={item.title} query={data.query} /></strong></button>
+        <span className="view-row-title"><button type="button" className="as-link" onClick={() => { const next = open === item.id ? null : item.id; setOpen(next); client.select(next ? { id: item.id, title: item.title } : null); }}><strong><Marked text={item.title} query={data.query} /></strong></button>
+          {client.view?.canFullscreen && <button type="button" className="text-button view-row-open" aria-label={`Open ${item.title}`} onClick={() => void client.openFullscreen(`/bookmarks/${item.id}`).catch(() => {})}>Open</button>}</span>
         <span className="row-meta">{item.site} · {savedLabel(item.savedAt)}{item.tags.length ? ` · ${item.tags.join(", ")}` : ""}</span>
         {(item.snippet ?? item.excerpt) && <span className="row-passage"><Marked text={(item.snippet ?? item.excerpt)!} query={data.query} /></span>}
         {open === item.id && <Form className="card-edit" onSubmit={async (form) => {
@@ -477,7 +499,7 @@ export function BookmarksCard({ data }: { data: ShowData }) {
             setOpen(null);
           } catch (failure) { setError(errorMessage(failure)); } finally { setBusy(false); }
         }}>
-          <OpenLink url={item.url} className="small">{item.url}</OpenLink>
+          <ExternalLink href={item.url} className="small">{item.url}</ExternalLink>
           <label>Tags<input name="tags" defaultValue={item.tags.join(", ")} /></label>
           <label>Note<textarea name="note" rows={2} defaultValue={item.note ?? ""} /></label>
           <Button className="primary" disabled={busy}>{busy ? "Saving…" : "Save"}</Button>
@@ -495,7 +517,7 @@ export function AppScreens() {
     <Route path="/bookmarks/:id" element={<Library />} />
     <Route path="/save" element={<SaveScreen />} />
     <Route path="/connect" element={<ConnectScreen />} />
-    <Route path="/settings" element={<ConnectionSettings />} />
+    <Route path="/settings" element={<SettingsScreen />} />
     <Route path="/oauth/consent" element={<ConsentScreen />} />
     <Route path="*" element={<Library />} />
   </Routes>;

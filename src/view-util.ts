@@ -45,38 +45,4 @@ export function splitParts(text: string, size = PART_CHARS): string[] {
   return parts.length ? parts : [""];
 }
 
-/**
- * Copy text. Inside an assistant's sandboxed frame the async clipboard is
- * denied, so this falls back to a selection. False means the person copies
- * it by hand, and the text stays on screen for that.
- */
-export async function copyText(text: string): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch { /* Sandboxed: try a selection. */ }
-  const area = document.createElement("textarea");
-  area.value = text;
-  area.setAttribute("readonly", "");
-  area.style.position = "fixed";
-  area.style.opacity = "0";
-  document.body.appendChild(area);
-  area.select();
-  let copied = false;
-  try { copied = document.execCommand("copy"); } catch { copied = false; }
-  area.remove();
-  return copied;
-}
-
-/** Hand the person a file from the app's own page. */
-export function download(fileName: string, data: BlobPart, type: string) {
-  const url = URL.createObjectURL(new Blob([data], { type }));
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = fileName;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 10_000);
-}
 export const fromBase64 = (base64: string) => Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
