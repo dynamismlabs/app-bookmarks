@@ -30,7 +30,7 @@ pnpm dev              # set APP_DATA_DIR to a disposable folder first
 
 The same page saved twice is one record. A repeat adds new tags and never overwrites a title or note you wrote.
 
-The extension signs in to Bookmarks with OAuth, like any assistant, and gets its own connection. It asks only to add links, so Bookmarks' consent screen starts on **Only add**, and that connection can't read or change what you saved. You can allow more there. Settings lists it as "Can only add", with Disconnect.
+The extension signs in to Bookmarks with OAuth, like any assistant, and gets its own connection. It asks only to add links, so Bookmarks' consent screen starts on **Only add**, and that connection can't read or change what you saved. You can allow more there. Settings lists it as "Can only add", with Disconnect. Disconnecting in the extension ends that connection in Bookmarks too.
 
 ## Reading pages
 
@@ -50,6 +50,8 @@ Saved text is reference material from the web. Tool descriptions say so to every
 Connect any assistant at `<address>/mcp`. Each connection (a Ri workspace, Claude, ChatGPT, a browser) asks you on Bookmarks' consent screen whether it may only read or also make changes. Bookmarks is shared as a whole.
 
 Inside an assistant that shows MCP Apps views (Ri, ChatGPT, Claude) Bookmarks is the whole app: `open_bookmarks` opens it, at a saved link or a search when asked, and the @ menu offers your saved links. Deleting, importing, exporting and the extension download work there too, as actions the assistant's model never sees. Saved links open through the assistant, "Ask about this link" puts a question in the chat for you to send, Settings works there too, and Open in browser takes you to Bookmarks' own page for the bookmarklet and your account.
+
+When an assistant connects, Bookmarks tells it how to use the tools together (in `instructions`, app.config.ts): search here first for things you saved or read, answer with the title and the link, and say when an answer rests on saved text rather than the live page.
 
 Tools for the model: `list_bookmarks`, `get_bookmark`, `list_tags`, `save_bookmark`, `update_bookmark`, `save_bookmarks` (the extension's batch save), `show_bookmarks` (a card in the chat) and `open_bookmarks` (the whole app).
 

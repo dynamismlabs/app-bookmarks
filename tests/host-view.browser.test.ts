@@ -181,6 +181,8 @@ run("the view in a strict host", () => {
       await view.locator(".connection-row").filter({ hasText: "Qualification host (this one)" }).getByText("Can read and make changes").waitFor();
       await view.locator(".connection-row").filter({ hasText: "Bookmarks browser extension" }).getByText("Can only add").waitFor();
       await view.getByRole("heading", { name: "Your accounts through Ri" }).waitFor();
+      // What it asks Ri for, in plain words from its hub declaration (kit #25), not "use your accounts".
+      await view.getByText("Bookmarks asks Ri to read public web pages through Ri, to read the pages you save, so you can search what they said.", { exact: false }).waitFor();
       await view.getByRole("heading", { name: "Automations" }).waitFor();
       await view.getByText("Read saved pages").first().waitFor();
       expect(await poll(host.modelContext, (text) => text.includes('"path":"/settings"'))).toContain('"section":"Settings"');
