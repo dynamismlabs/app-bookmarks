@@ -137,7 +137,7 @@ run("the extension in Chromium", () => {
     expect(await page.locator("#home").textContent()).toBe(origin);
     expect(await page.getByRole("alert").filter({ hasText: /./ }).count()).toBe(0);
     const held = await worker.evaluate(async () => (await chrome.storage.local.get("connection")).connection);
-    expect(held).toMatchObject({ app: origin, resource: origin, revocationEndpoint: null, refreshToken: expect.any(String) });
+    expect(held).toMatchObject({ app: origin, resource: origin, revocationEndpoint: `${origin}/api/auth/mcp/revoke`, refreshToken: expect.any(String) });
     // The app lists it as able only to add, under the name it registered with.
     const listed = await (await fetch(`${origin}/api/connections`, { headers: { origin } })).json() as { clientId: string; name: string; write: boolean; addOnly: boolean }[];
     expect(listed).toEqual([expect.objectContaining({ clientId: held.clientId, name: expect.stringMatching(/^Bookmarks browser extension/), write: false, addOnly: true })]);
@@ -145,6 +145,27 @@ run("the extension in Chromium", () => {
     expect(await saved()).toEqual([]);
     await addBookmark({ title: "Signed in", url: "https://example.test/signed-in" });
     expect((await until(saved, (rows) => rows.length > 0)).map((row) => row.url)).toEqual(["https://example.test/signed-in"]);
+    // Disconnect ends the connection in the app before the extension forgets it: Settings no longer lists it, and neither token works.
+    await page.getByRole("button", { name: "Disconnect" }).click();
+    await page.getByRole("heading", { name: "Connect this browser" }).waitFor();
+    expect(await page.locator("#disconnect-note").isHidden()).toBe(true);
+    expect(await worker.evaluate(async () => (await chrome.storage.local.get("connection")).connection ?? null)).toBeNull();
+    expect(await (await fetch(`${origin}/api/connections`, { headers: { origin } })).json()).toEqual([]);
+    const tools = await fetch(`${origin}/mcp`, { method: "POST", headers: { authorization: `Bearer ${held.accessToken}`, "content-type": "application/json", accept: "application/json, text/event-stream" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }) });
+    expect(tools.status).toBe(401);
+    const refreshed = await fetch(held.tokenEndpoint, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ grant_type: "refresh_token", client_id: held.clientId, refresh_token: held.refreshToken, resource: held.resource }).toString() });
+    expect(refreshed.ok).toBe(false);
+    await page.close();
+  });
+  it("forgets its connection when Bookmarks is out of reach, and says to remove it in Settings", async () => {
+    const held = await connected({ refreshToken: "kept", revocationEndpoint: "http://127.0.0.1:9/api/auth/mcp/revoke" });
+    const page = await extensionPage("options.html");
+    await page.getByRole("button", { name: "Disconnect" }).click();
+    await page.getByRole("heading", { name: "Connect this browser" }).waitFor();
+    expect(await page.getByRole("status").textContent()).toBe(`Disconnected here, but ${origin} didn't answer. Remove this browser in Bookmarks' Settings too.`);
+    expect(await worker.evaluate(async () => (await chrome.storage.local.get("connection")).connection ?? null)).toBeNull();
+    // The connection the app made is still there, for the person to remove.
+    expect((await (await fetch(`${origin}/api/connections`, { headers: { origin } })).json() as { clientId: string }[]).map((item) => item.clientId)).toContain(held.clientId);
     await page.close();
   });
   it("copies a bookmark to Bookmarks, with its folder as a tag", async () => {

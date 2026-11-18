@@ -182,6 +182,31 @@ export function connectionFor(app, meta, clientId, tokens) {
   return { app, clientId, tokenEndpoint: meta.tokenEndpoint, revocationEndpoint: meta.revocationEndpoint, resource: meta.resource, ...tokens };
 }
 
+/**
+ * Tell the app this browser is disconnecting (RFC 7009). Revoking the refresh
+ * token ends the whole connection: its tokens stop working at once and it
+ * leaves the app's Settings. A connection kept by an earlier version may not
+ * know the address, so it asks the app again. Answers whether the app
+ * confirmed, and never throws: the person asked to disconnect, so the
+ * extension forgets its tokens either way.
+ */
+export async function revoke(fetcher, connection) {
+  const token = connection?.refreshToken ?? connection?.accessToken;
+  if (!token) return false;
+  try {
+    const endpoint = connection.revocationEndpoint ?? (await discover(fetcher, connection.app)).revocationEndpoint;
+    if (!endpoint) return false;
+    const response = await fetcher(endpoint, {
+      method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ token, token_type_hint: connection.refreshToken ? 'refresh_token' : 'access_token', client_id: connection.clientId }).toString(),
+      signal: AbortSignal.timeout(10_000),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
 // ─── Calling the app ────────────────────────────────────────────────────────
 
 let rpcId = 0;

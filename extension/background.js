@@ -3,7 +3,7 @@
 // one place keeps the token fresh.
 import {
   authorizeUrl, clipText, codeFrom, connectionFor, discover, exchangeCode, firstBatch, fitItem, forQueue, pkcePair, register,
-  saveable, SAVE_TOOL, sendItems, createSession, tagsFromFolders,
+  revoke, saveable, SAVE_TOOL, sendItems, createSession, tagsFromFolders,
 } from './lib.js';
 
 const MAX_QUEUE = 5000;
@@ -15,7 +15,10 @@ const stored = (keys) => chrome.storage.local.get(keys);
 const session = createSession({
   fetcher: (url, init) => fetch(url, init),
   load: async () => (await stored('connection')).connection ?? null,
-  save: (connection) => serial(() => chrome.storage.local.set({ connection })),
+  // A refresh that finishes after Disconnect mustn't bring the connection back.
+  save: (connection) => serial(async () => {
+    if ((await stored('connection')).connection?.clientId === connection.clientId) await chrome.storage.local.set({ connection });
+  }),
 });
 
 async function folderNames(parentId) {
@@ -135,17 +138,17 @@ async function connect(app) {
   return { ok: true };
 }
 
+/**
+ * End the connection in the app first, so its tokens stop working and it leaves
+ * Settings, then forget it. `told` says whether the app confirmed: if it was out
+ * of reach, the options page asks the person to remove it in Settings.
+ */
 async function disconnect() {
   const { connection } = await stored('connection');
-  if (connection?.revocationEndpoint && connection.refreshToken) {
-    await fetch(connection.revocationEndpoint, {
-      method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ token: connection.refreshToken, token_type_hint: 'refresh_token', client_id: connection.clientId }).toString(),
-    }).catch(() => undefined);
-  }
+  const told = connection ? await revoke((url, init) => fetch(url, init), connection) : true;
   await serial(() => chrome.storage.local.remove(['connection', 'disconnected', 'lastError']));
   await chrome.action.setBadgeText({ text: '' });
-  return { ok: true };
+  return { ok: true, told };
 }
 
 chrome.bookmarks.onCreated.addListener(async (_id, node) => {

@@ -28,6 +28,7 @@ $('connect-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   const error = (text) => { $('connect-error').textContent = text; $('connect-error').hidden = !text; };
   error('');
+  $('disconnect-note').hidden = true;
   const app = appOrigin($('address').value);
   if (!app) return error('That is not a Bookmarks address. Use the address Bookmarks shows, such as http://127.0.0.1:4316.');
   // The browser only shows this prompt straight from the click, so nothing is awaited before it.
@@ -45,8 +46,13 @@ $('mirror').addEventListener('change', () => chrome.storage.local.set({ mirror: 
 
 $('disconnect').addEventListener('click', async () => {
   const { connection } = await chrome.storage.local.get('connection');
-  await send({ type: 'disconnect' });
+  $('disconnect').disabled = true;
+  const result = await send({ type: 'disconnect' });
+  $('disconnect').disabled = false;
   if (connection) await chrome.permissions.remove({ origins: [originPattern(connection.app)] }).catch(() => undefined);
+  // The extension has forgotten its token. If Bookmarks didn't answer, the connection is still listed there.
+  $('disconnect-note').hidden = !!result?.told;
+  $('disconnect-note').textContent = result?.told ? '' : `Disconnected here, but ${connection?.app ?? 'Bookmarks'} didn't answer. Remove this browser in Bookmarks' Settings too.`;
   await render();
 });
 

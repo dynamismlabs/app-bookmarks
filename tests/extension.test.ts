@@ -182,6 +182,24 @@ describe("calling the app", () => {
     const session = lib.createSession({ load: async () => ({ ...connection, expiresAt: 0 }), save: async () => undefined, fetcher: async () => new Response('{"error":"invalid_grant"}', { status: 400 }) });
     expect((await session.call("save_bookmarks", {})).outcome).toBe("disconnected");
   });
+  it("revokes its refresh token on Disconnect, and says when the app couldn't be told", async () => {
+    const revocationEndpoint = "https://bookmarks.example/api/auth/mcp/revoke";
+    let seen: { url: string; body: string } | null = null;
+    const answer = (status: number) => async (url: string, init: RequestInit) => { seen = { url, body: String(init.body) }; return new Response(null, { status }); };
+    expect(await lib.revoke(answer(200), { ...connection, revocationEndpoint })).toBe(true);
+    expect(seen!.url).toBe(revocationEndpoint);
+    expect(Object.fromEntries(new URLSearchParams(seen!.body))).toEqual({ token: "r", token_type_hint: "refresh_token", client_id: "c" });
+    expect(await lib.revoke(answer(200), { ...connection, revocationEndpoint, refreshToken: null })).toBe(true);
+    expect(Object.fromEntries(new URLSearchParams(seen!.body))).toMatchObject({ token: "t", token_type_hint: "access_token" });
+    // Out of reach, refused, or a Bookmarks too old to offer revocation: the extension forgets its tokens anyway.
+    expect(await lib.revoke(async () => { throw new TypeError("Failed to fetch"); }, { ...connection, revocationEndpoint })).toBe(false);
+    expect(await lib.revoke(answer(400), { ...connection, revocationEndpoint })).toBe(false);
+    const older = async (url: string) => new Response(JSON.stringify(url.endsWith("oauth-protected-resource")
+      ? { resource: "https://bookmarks.example/mcp", authorization_servers: ["https://bookmarks.example"] }
+      : { authorization_endpoint: "a", token_endpoint: "t", registration_endpoint: "r" }));
+    expect(await lib.revoke(older, { ...connection, revocationEndpoint: null })).toBe(false);
+    expect(await lib.revoke(answer(200), null)).toBe(false);
+  });
 });
 
 describe("connecting to the real app", () => {
@@ -245,8 +263,8 @@ describe("connecting to the real app", () => {
     const h = await harness();
     const fetcher = (url: string, init?: RequestInit) => h.request(url, init);
     const meta = await lib.discover(fetcher, ORIGIN);
-    // The app names itself as the protected resource, and offers no revocation endpoint (see docs/parity.md).
-    expect(meta).toMatchObject({ resource: ORIGIN, revocationEndpoint: null, authorizationEndpoint: expect.stringContaining("/api/auth/"), tokenEndpoint: expect.stringContaining("/api/auth/") });
+    // The app names itself as the protected resource, and where a client disconnects itself (RFC 7009).
+    expect(meta).toMatchObject({ resource: ORIGIN, revocationEndpoint: `${ORIGIN}/api/auth/mcp/revoke`, authorizationEndpoint: expect.stringContaining("/api/auth/"), tokenEndpoint: expect.stringContaining("/api/auth/") });
     const clientId = await lib.register(fetcher, meta, REDIRECT, "Bookmarks browser extension on macOS");
     const { verifier, challenge } = await lib.pkcePair();
     const state = "state-1";
@@ -299,5 +317,50 @@ describe("connecting to the real app", () => {
     expect((await lib.sendItems(session, "extension", [{ url: "https://example.test/a" }])).outcome).toBe("ok");
     expect((await h.request(`/api/connections/${clientId}`, { method: "DELETE", headers: { origin: ORIGIN } })).status).toBe(200);
     expect((await lib.sendItems(session, "extension", [{ url: "https://example.test/b" }])).outcome).toBe("disconnected");
+  });
+
+  /** Sign in as the extension does, from its origin, allowed only to add. */
+  async function signIn(h: Awaited<ReturnType<typeof harness>>) {
+    const browser = fromExtension(h);
+    const meta = await lib.discover(browser, ORIGIN);
+    const clientId = await lib.register(browser, meta, REDIRECT, "Bookmarks browser extension on macOS");
+    const { verifier, challenge } = await lib.pkcePair();
+    const approved = await approveInBrowser(lib.authorizeUrl(meta, clientId, REDIRECT, challenge, "s"), (request) => h.app.request(request), { write: false, addOnly: true });
+    return lib.connectionFor(ORIGIN, meta, clientId, await lib.exchangeCode(browser, meta, clientId, REDIRECT, lib.codeFrom(approved.redirectURI, "s"), verifier));
+  }
+  const listed = async (h: Awaited<ReturnType<typeof harness>>) => (await (await h.request("/api/connections", { headers: { origin: ORIGIN } })).json() as { name: string }[]).map((item) => item.name);
+
+  it("disconnects itself: once it revokes its refresh token, neither token works and Settings no longer lists it", async () => {
+    const h = await harness();
+    const browser = fromExtension(h);
+    let stored = await signIn(h);
+    const session = lib.createSession({ fetcher: browser, load: async () => stored, save: async (next: typeof stored) => { stored = next; } });
+    expect((await lib.sendItems(session, "extension", [{ url: "https://example.test/before" }])).outcome).toBe("ok");
+    expect(await listed(h)).toEqual(["Bookmarks browser extension on macOS"]);
+    const held = { ...stored };
+    expect(await lib.revoke(browser, held)).toBe(true);
+    // The access token stops at once, though it had most of an hour left.
+    expect(held.expiresAt).toBeGreaterThan(Date.now() + 60_000);
+    const mcp = await browser(`${ORIGIN}/mcp`, { method: "POST", headers: { authorization: `Bearer ${held.accessToken}`, "content-type": "application/json", accept: "application/json, text/event-stream" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }) });
+    expect(mcp.status).toBe(401);
+    // The refresh token is refused too, so the extension can't save even if it tried.
+    const refreshed = await browser(held.tokenEndpoint, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ grant_type: "refresh_token", client_id: held.clientId, refresh_token: held.refreshToken, resource: held.resource }).toString() });
+    expect(refreshed.ok).toBe(false);
+    expect(await session.call(lib.SAVE_TOOL, { via: "extension", items: [{ url: "https://example.test/after" }] })).toMatchObject({ outcome: "disconnected" });
+    expect((await h.call("list_bookmarks", {})).items.map((item: { url: string }) => item.url)).toEqual(["https://example.test/before"]);
+    expect(await listed(h)).toEqual([]);
+    // The endpoint answers the extension's origin like the token endpoint, and a second Disconnect is harmless.
+    const again = await browser(held.revocationEndpoint, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ token: held.refreshToken, token_type_hint: "refresh_token", client_id: held.clientId }).toString() });
+    expect(again.status).toBe(200);
+    expect(again.headers.get("access-control-allow-origin")).toBe("*");
+    expect(again.headers.get("access-control-allow-credentials")).toBeNull();
+  });
+  it("revokes a connection kept by an earlier version, which doesn't know where to", async () => {
+    const h = await harness();
+    // Version 0.2.2 and earlier kept revocationEndpoint: null, from a Bookmarks that offered none.
+    const kept = { ...(await signIn(h)), revocationEndpoint: null };
+    expect(await lib.revoke(fromExtension(h), kept)).toBe(true);
+    expect(await listed(h)).toEqual([]);
+    expect((await h.request(`${ORIGIN}/mcp`, { method: "POST", headers: { authorization: `Bearer ${kept.accessToken}`, "content-type": "application/json", accept: "application/json, text/event-stream" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }) })).status).toBe(401);
   });
 });
