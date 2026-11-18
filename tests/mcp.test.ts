@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { appConfig } from "../app.config";
 import { cleanup, harness, ORIGIN } from "./helpers";
 
 afterEach(cleanup);
@@ -19,6 +20,8 @@ describe("over MCP", () => {
   it("lists, saves, finds and shows links, with results matching their schemas", async () => {
     const h = await harness();
     const mcp = await client(h, (await h.connect()).token);
+    // How to use the tools together (the old find-saved-links skill) arrives when the connection starts.
+    expect(mcp.getInstructions()).toBe(appConfig.instructions);
     const { tools } = await mcp.listTools();
     expect(tools.map((tool) => tool.name)).toContain("show_bookmarks");
     const saved = await mcp.callTool({ name: "save_bookmark", arguments: { url: "https://harborlog.example/tide-tables", tags: ["sailing"], pageText: "Tide tables list the height of the water at each hour." } });
@@ -45,7 +48,8 @@ describe("over MCP", () => {
     const h = await harness();
     const kept = await h.call("save_bookmark", { url: "https://harborlog.example/tide-tables", title: "My tide notes", note: "Check before sailing", tags: ["sailing"] });
     const mcp = await client(h, (await h.connect({ addOnly: true, name: "Bookmarks browser extension" })).token);
-    // It is offered only the add action, described as everyone else sees it.
+    // It is offered only the add action, described as everyone else sees it, and none of the instructions for reading.
+    expect(mcp.getInstructions()).toBeUndefined();
     const { tools } = await mcp.listTools();
     expect(tools.map((tool) => tool.name)).toEqual(["save_bookmarks"]);
     const writer = await client(h, (await h.connect()).token);

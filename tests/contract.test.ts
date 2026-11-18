@@ -49,9 +49,16 @@ describe("contract", () => {
     }
   });
   it("uses copy without long dashes or semicolons in descriptions", () => {
-    for (const item of [...contract.actions, ...contract.mcp.tools]) {
+    for (const item of [...contract.actions, ...contract.mcp.tools, { name: "instructions", description: application.config.instructions! }]) {
       expect(item.description, item.name).not.toMatch(/[—–]/);
       expect(item.description, item.name).not.toContain(";");
     }
+  });
+  it("tells assistants only what the tool descriptions don't", () => {
+    const instructions = application.config.instructions!;
+    expect(instructions.length).toBeLessThanOrEqual(600);
+    // Each tool it names exists, and it repeats none of the search advice list_bookmarks and get_bookmark already give.
+    for (const name of instructions.match(/\b[a-z]+_[a-z_]+\b/g) ?? []) expect(tool(name), name).toBeTruthy();
+    for (const repeated of ["coverage", "the words the page itself would use", "before you quote"]) expect(instructions).not.toContain(repeated);
   });
 });
