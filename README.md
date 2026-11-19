@@ -47,7 +47,7 @@ Saved text is reference material from the web. Tool descriptions say so to every
 
 ## Assistants
 
-Connect any assistant at `<address>/mcp`. Each connection (a Ri workspace, Claude, ChatGPT, a browser) asks you on Bookmarks' consent screen whether it may only read or also make changes. Bookmarks is shared as a whole.
+Connect any assistant at `<address>/mcp`. Each connection (a Ri workspace, Claude, ChatGPT, a browser) asks you on Bookmarks' consent screen whether it may only read or also make changes. Bookmarks is shared as a whole. When Ri installed Bookmarks on its computer, Ri asks you the same question in its own window, so you can allow it from any device.
 
 Inside an assistant that shows MCP Apps views (Ri, ChatGPT, Claude) Bookmarks is the whole app: `open_bookmarks` opens it, at a saved link or a search when asked, and the @ menu offers your saved links. Deleting, importing, exporting and the extension download work there too, as actions the assistant's model never sees. Saved links open through the assistant, "Ask about this link" puts a question in the chat for you to send, Settings works there too, and Open in browser takes you to Bookmarks' own page for the bookmarklet and your account.
 

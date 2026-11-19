@@ -1,6 +1,6 @@
 # Maintaining Bookmarks
 
-Bookmarks is a personal app built with App Builder (core 0.2.2 from kit `e44b499`, vendored in vendor/; created from starter 0.2.0). Take kit updates with `app-builder upgrade --core <kit checkout or tarball>`. It was ported from the Bookmarks app that used to be built into Ri; docs/parity.md says what carried over, what changed and what can't work yet. Read the build skill in .agents/skills/build-personal-app before changing how it runs, connects or changes.
+Bookmarks is a personal app built with App Builder (core 0.2.3 from kit `b38d373`, vendored in vendor/; created from starter 0.2.0). Take kit updates with `app-builder upgrade --core <kit checkout or tarball>`. It was ported from the Bookmarks app that used to be built into Ri; docs/parity.md says what carried over, what changed and what can't work yet. Read the build skill in .agents/skills/build-personal-app before changing how it runs, connects or changes.
 
 ## Commands
 
@@ -32,6 +32,7 @@ Bookmarks is a personal app built with App Builder (core 0.2.2 from kit `e44b499
 - Pages are read only through the hub's `ri__read_web_page` (`connectors(ctx).call`), never `fetch` in the app, so Ri's private-network floor applies. One bounded step per job run. No loops or timers.
 - Bookmarks has no sources: a connection sees everything or nothing, and may read, also write, or only add. Deleting, import, export and the extension download are the person's own: `visibility: ["app"]`, so the view offers them and a host that follows MCP Apps keeps them from its model. That's the host's rule (Ri enforces it), so they still need a connection that may write. Mark nothing else view-only. `read_saved_pages` has no audience: only the job runs it.
 - `save_bookmarks` is the one add action (`adds: true`), so the consent screen can offer "Only add" and the extension needs no more. It answers only counts, and a link already saved answers like a new one. Never mark an action that answers with a stored record: `save_bookmark` returns the merged bookmark, so marking it would let an add-only connection read any saved link by saving it again.
+- Ri, when it installed Bookmarks on this computer, allows itself through the core's host grant (core 0.2.3): the same choices as the consent screen, granted with the data folder's `host-key`. The app adds nothing for it. `tests/host-grant.test.ts` checks Bookmarks' choices and the connection each gives. Never print, log or copy `host-key`.
 - Migrations are forward only. Policy values live in the query layer, never SQL defaults.
 - Copy has no em or long dashes and avoids semicolons. No sparkle or wand icons.
 
