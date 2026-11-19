@@ -1,10 +1,10 @@
 # Maintaining Bookmarks
 
-Bookmarks is a personal app built with App Builder (core 0.2.2 from kit `73c5266`, vendored in vendor/; created from starter 0.2.0). Take kit updates with `app-builder upgrade --core <kit checkout or tarball>`. It was ported from the Bookmarks app that used to be built into Ri; docs/parity.md says what carried over, what changed and what can't work yet. Read the build skill in .agents/skills/build-personal-app before changing how it runs, connects or changes.
+Bookmarks is a personal app built with App Builder (core 0.2.2 from kit `e44b499`, vendored in vendor/; created from starter 0.2.0). Take kit updates with `app-builder upgrade --core <kit checkout or tarball>`. It was ported from the Bookmarks app that used to be built into Ri; docs/parity.md says what carried over, what changed and what can't work yet. Read the build skill in .agents/skills/build-personal-app before changing how it runs, connects or changes.
 
 ## Commands
 
-- `pnpm typecheck`, `pnpm test` (vitest, disposable data, fixture hub), `pnpm build`. `pnpm test` is the kit's gate for `change`, `upgrade` and `serve --install`, which may run on a busy machine: keep wall-clock limits out of it.
+- `pnpm typecheck`, `pnpm test` (vitest, disposable data, fixture hub), `pnpm build`. `pnpm test` is the kit's gate for `change`, `upgrade` and `serve --install`, which may run on a busy machine: keep wall-clock limits out of it. Most tests import the app directly and share the core's zod. `tests/loaded-by-cli.test.ts` loads `src/app.ts` through tsx, as the CLI and the service do, so the app has its own zod there.
 - `pnpm test:perf`: timings (a 20,000-link import, a search), apart from `pnpm test`. It prints the load average and skips the timings on a busy machine. Run it quietly before each tag.
 - `pnpm test:browser`: builds, then runs the extension and the assistant view (in the kit's strict MCP Apps test host, `tests/host/browser-host.ts`, copied from the kit) in Playwright's Chromium (needs `chromium-1223` in ~/Library/Caches/ms-playwright). The extension signs in for real, except that headless Chromium can't open `chrome.identity.launchWebAuthFlow`'s window, so the test opens the consent screen in a tab instead. Keep `tests/host/browser-host.ts` in step with the kit's `packages/core/test/browser-host.ts`.
 - `pnpm preview`: the fictional library on a disposable data directory with the fixture hub
