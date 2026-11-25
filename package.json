@@ -18,7 +18,7 @@
     "test:browser": "app-builder build && BROWSER_TESTS=1 vitest run tests/extension.browser.test.ts tests/host-view.browser.test.ts"
   },
   "dependencies": {
-    "@app-builder/core": "file:vendor/app-builder-core-0.2.10.tgz",
+    "@app-builder/core": "file:vendor/app-builder-core-0.2.11.tgz",
     "@trpc/server": "11.17.0",
     "drizzle-orm": "0.45.2",
     "react": "19.2.3",
@@ -50,7 +50,7 @@
   "appBuilder": {
     "starterVersion": "0.2.0",
     "example": "tracker",
-    "coreVersion": "0.2.10"
+    "coreVersion": "0.2.11"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
