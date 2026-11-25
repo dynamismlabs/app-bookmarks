@@ -1,6 +1,6 @@
 # Maintaining Bookmarks
 
-Bookmarks is a personal app built with App Builder (core 0.2.10 from kit `2116aff`, vendored in vendor/; created from starter 0.2.0). Take kit updates with `app-builder upgrade --core <kit checkout or tarball>`. It was ported from the Bookmarks app that used to be built into Ri; docs/parity.md says what carried over, what changed and what can't work yet. Read the build skill in .agents/skills/build-personal-app before changing how it runs, connects or changes.
+Bookmarks is a personal app built with App Builder (core 0.2.11 from kit `0c3c831`, vendored in vendor/; created from starter 0.2.0). Take kit updates with `app-builder upgrade --core <kit checkout or tarball>`. It was ported from the Bookmarks app that used to be built into Ri; docs/parity.md says what carried over, what changed and what can't work yet. Read the build skill in .agents/skills/build-personal-app before changing how it runs, connects or changes.
 
 ## Commands
 
